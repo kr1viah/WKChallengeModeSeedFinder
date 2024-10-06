@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"math"
-	"math/bits"
 
 	"github.com/crazy3lf/colorconv"
+	"github.com/dim13/djb2"
 )
 
 const ( // constants, defined in different
@@ -28,17 +28,16 @@ var itemCosts = map[string]float64{
 
 var charList = [6]string{"basic", "mage", "laser", "melee", "pointer", "swarm"}
 
-var pcg pcg32_random_t // rename to rng maybe?
-
-var p_inc uint64 = 1442695040888963407
-var p_seed uint64 = 12047754176567800795 // required for godot, it's the default seed it uses for when no seed is set
-var current_inc uint64 = p_inc
-var current_seed uint64 = 0
+var rng2 RandomNumberGenerator // rename to rng maybe?
 
 // windowkill
 
 func main() {
-	Set_seed(uint64(3823837572363))
+
+	rng2.Initialise()
+
+	fmt.Println(djb2.SumString("Ab"))
+	rng2.Set_seed(3823837572363)
 
 	/* 	test seed, this seed should print:
 
@@ -54,20 +53,20 @@ func main() {
 	*/
 
 	// fmt.Println("state:", get_state())
-	fmt.Println("seed:", Get_seed())
+	fmt.Println("seed:", rng2.Get_seed())
 
 	// intensity determines basis for other rolls
-	var intensity = Randf_range(0.20, 1.0)
+	var intensity = rng2.Randf_range(0.20, 1.0)
 
-	var char = charList[int(Randi())%len(charList)]
-	var abilityChar = charList[int(Randi())%len(charList)]
-	var abilityLevel = 1.0 + math.Round(run(Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
+	var char = charList[int(rng2.Randi())%len(charList)]
+	var abilityChar = charList[int(rng2.Randi())%len(charList)]
+	var abilityLevel = 1.0 + math.Round(run(rng2.Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
 
 	var itemCount float64 = float64(len(itemCategories))
 	// points determine item layout
-	var points = 0.66 * itemCount * Randf_range(0.5, 1.5) * (1.0 + 4.0*math.Pow(intensity, 1.5))
+	var points = 0.66 * itemCount * rng2.Randf_range(0.5, 1.5) * (1.0 + 4.0*math.Pow(intensity, 1.5))
 
-	var itemDistSteepness = Randf_range(-0.5, 2.0)
+	var itemDistSteepness = rng2.Randf_range(-0.5, 2.0)
 	var itemDistArea = 1.0 / (1.0 + math.Pow(2, 0.98*itemDistSteepness))
 
 	// windowkill uses the ""global"" randomness and shuffle()
@@ -75,18 +74,18 @@ func main() {
 	// then sets the seed to the current seed (because setting the current seed advances the state 2 times im pretty sure, although doesnt really matter)
 	// and after calling shuffle() set the state (and inc) back to what it was before directly
 
-	var oldstate = pcg.state
-	var oldInc = pcg.inc
+	var oldstate = rng2.state
+	var oldInc = rng2.inc
 
-	Set_seed(Get_seed())
+	rng2.Set_seed(rng2.Get_seed())
 	shuffle(itemCategories)
 
-	pcg.inc = oldInc
-	pcg.state = oldstate
+	rng2.inc = oldInc
+	rng2.state = oldstate
 
 	// chance to move offensive upgrades closer to end if not already
 
-	if Randf() < intensity {
+	if rng2.Randf() < intensity {
 		multishotIdx := -1
 		for i, category := range itemCategories {
 			if category == "multiShot" {
@@ -98,11 +97,11 @@ func main() {
 		if multishotIdx != -1 {
 			itemCategories = append(itemCategories[:multishotIdx], itemCategories[multishotIdx+1:]...)
 		}
-		insertIdx := int32(itemCount) - 1 - Randi_range(0, 2)
+		insertIdx := int32(itemCount) - 1 - rng2.Randi_range(0, 2)
 		itemCategories = append(itemCategories[:insertIdx], append([]string{"multiShot"}, itemCategories[insertIdx:]...)...)
 	}
 
-	if Randf() < intensity {
+	if rng2.Randf() < intensity {
 		fireRateIdx := -1
 		for i, category := range itemCategories {
 			if category == "fireRate" {
@@ -114,7 +113,7 @@ func main() {
 		if fireRateIdx != -1 {
 			itemCategories = append(itemCategories[:fireRateIdx], itemCategories[fireRateIdx+1:]...)
 		}
-		insertIdx := int32(itemCount) - 1 - Randi_range(0, 2)
+		insertIdx := int32(itemCount) - 1 - rng2.Randi_range(0, 2)
 		itemCategories = append(itemCategories[:insertIdx], append([]string{"fireRate"}, itemCategories[insertIdx:]...)...)
 	}
 
@@ -130,9 +129,9 @@ func main() {
 
 		var special = 0.0
 		if i == int(itemCount)-1 {
-			special += 4.0 * Randf_range(0.0, float32(math.Pow(intensity, 2.0)))
+			special += 4.0 * rng2.Randf_range(0.0, float32(math.Pow(intensity, 2.0)))
 		}
-		amount := math.Max(0.0, 3.0*run(catT, itemDistSteepness, 1.0, 0.0)+3.0*clamp(Randfn(0.0, 0.15), -0.5, 0.5))
+		amount := math.Max(0.0, 3.0*run(catT, itemDistSteepness, 1.0, 0.0)+3.0*clamp(rng2.Randfn(0.0, 0.15), -0.5, 0.5))
 		itemCounts[item] = int(clamp(math.Round(baseAmount+amount*((points/cost)/(1.0+5.0*itemDistArea))+special), 0.0, 26.0))
 		total += itemCounts[item]
 	}
@@ -140,11 +139,11 @@ func main() {
 	// balance for offensive upgrades
 	intensity = -0.05 + intensity*lerp(0.33, 1.2, smoothCorner((float64(itemCounts["multiShot"])*1.8+float64(itemCounts["fireRate"]))/12.0, 1.0, 1.0, 4.0))
 
-	var finalT = Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
+	var finalT = rng2.Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
 	var startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0)
 
-	var r, g, b, _ = colorconv.HSVToRGB(Randf(), Randf(), float64(1.0)) // color
-	var colorState = Randi_range(0, 2)
+	var r, g, b, _ = colorconv.HSVToRGB(rng2.Randf(), rng2.Randf(), float64(1.0)) // color
+	var colorState = rng2.Randi_range(0, 2)
 
 	fmt.Println("char:", char)
 	fmt.Println("abilityChar:", abilityChar)
@@ -154,113 +153,6 @@ func main() {
 	fmt.Println("startTime:", startTime)
 	fmt.Println("colorState:", colorState)
 	fmt.Println("color:", float32(r)/255, float32(g)/255, float32(b)/255, 1.0) // figure out how to pack r g and b into a single `color` variable
-}
-
-// pcg.h
-
-type pcg32_random_t struct {
-	state uint64
-	inc   uint64
-}
-
-// pcg.cpp
-
-func pcg32_random_r(rng *pcg32_random_t) uint32 {
-	var oldstate uint64 = rng.state
-	rng.state = (oldstate * 6364136223846793005) + (rng.inc | 1)
-	var xorshifted uint32 = uint32(((oldstate >> uint64(18)) ^ oldstate) >> uint64(27))
-	var rot uint32 = uint32(oldstate >> uint64(59))
-	return (xorshifted >> rot) | (xorshifted << ((-rot) & 31))
-}
-
-func pcg32_srandom_r(rng *pcg32_random_t, initstate uint64, initseq uint64) {
-	rng.state = uint64(0)
-	rng.inc = (initseq << 1) | 1
-	pcg32_random_r(rng)
-	rng.state += initstate
-	pcg32_random_r(rng)
-}
-
-func pcg32_boundedrand_r(rng *pcg32_random_t, bound uint32) uint32 {
-	threshold := -bound % bound
-	for {
-		r := pcg32_random_r(rng)
-		if r >= threshold {
-			return r % bound
-		}
-	}
-}
-
-// random_pcg.cpp
-
-func randomf32(p_from float32, p_to float32) float32 { // `random()` float version
-	return randf32()*(p_to-p_from) + p_from
-}
-
-func randomi(p_from int, p_to int) int { // `random()` int version
-	if p_from == p_to {
-		return p_from
-	}
-	bounds := uint32(int(math.Abs(float64(p_from-p_to))) + 1)
-	randomValue := int(randbound(bounds))
-	if p_from < p_to {
-		return p_from + randomValue
-	}
-	return p_to + randomValue
-}
-
-// random_pcg.h
-
-func randbound(bounds uint32) uint32 { // rand() with bounds
-	return pcg32_boundedrand_r(&pcg, bounds)
-}
-
-func rand() uint32 { // normal rand
-	return pcg32_random_r(&pcg)
-}
-
-func randf32() float32 {
-	var proto_exp_offset uint32 = rand()
-	if proto_exp_offset == 0 {
-		return 0
-	}
-	return float32(math.Ldexp(float64(rand()|0x80000001), -32-bits.LeadingZeros32(proto_exp_offset)))
-}
-
-// random_number_generator.h
-
-func Set_seed(p_seed uint64) {
-	current_seed = p_seed
-	pcg32_srandom_r(&pcg, current_seed, current_inc)
-}
-func Get_seed() uint64 { return current_seed }
-
-func Randi() uint32 {
-	return rand()
-}
-
-func Randf() float64 {
-	var proto_exp_offset uint32 = rand()
-	if proto_exp_offset == 0 {
-		return 0
-	}
-	return float64(float32(math.Ldexp(float64(rand()|0x80000001), -32-bits.LeadingZeros32(proto_exp_offset))))
-}
-
-func Randf_range(p_from float32, p_to float32) float64 {
-	return float64(float32(float64(randomf32(p_from, p_to))))
-}
-
-func Randfn(p_mean float32, p_deviation float32) float64 {
-	var temp float32 = randf32()
-	if temp < 0.00001 {
-		temp += 0.00001 // this is what CMP_EPSILON is defined as
-	}
-	return float64(p_mean + p_deviation*(float32(math.Cos(Math_TAU*float64(randf32()))*math.Sqrt(-2.0*math.Log(float64(temp))))))
-}
-
-func Randi_range(p_from int, p_to int) int32 {
-	return int32(randomi(p_from, p_to))
 }
 
 // helper functions
@@ -327,7 +219,7 @@ func shuffle(arr []string) {
 		return
 	}
 	for i := n - 1; i > 0; i-- {
-		j := randbound(uint32(i + 1))
+		j := rng2.randbound(uint32(i + 1))
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 }
