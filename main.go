@@ -9,8 +9,7 @@ import (
 )
 
 const ( // constants, defined in different
-	Math_TAU           = 6.2831853071795864769252867666
-	PCG_DEFAULT_INC_64 = 1442695040888963407
+	Math_TAU = 6.2831853071795864769252867666
 )
 
 var itemCategories = []string{"speed", "fireRate", "multiShot", "wallPunch", "splashDamage", "piercing", "freezing", "infection"}

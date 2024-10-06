@@ -93,5 +93,5 @@ func (rng *RandomNumberGenerator) Randi() uint32 {
 }
 
 func (rng *RandomNumberGenerator) Randomize() { // required for godot, but techincally will never be used since it just randomises, can only really be used for seeing which random numbers are more likely than others
-	rng.Set_seed((uint64(time.Now().Unix()+time.Now().UnixNano()/1000)*rng.state + PCG_DEFAULT_INC_64))
+	rng.Set_seed((uint64(time.Now().Unix()+time.Now().UnixNano()/1000)*rng.state + 1442695040888963407)) // PCG_DEFAULT_INC_64
 }
