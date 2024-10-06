@@ -33,7 +33,6 @@ var rng2 RandomNumberGenerator // rename to rng maybe?
 // windowkill
 
 func main() {
-
 	rng2.Initialise()
 
 	fmt.Println(djb2.SumString("Ab"))
@@ -155,6 +154,14 @@ func main() {
 	fmt.Println("color:", float32(r)/255, float32(g)/255, float32(b)/255, 1.0) // figure out how to pack r g and b into a single `color` variable
 }
 
+//
+//
+//
+//
+//
+//
+//
+//
 // helper functions
 
 func pinch(v float64) float64 { // function run() uses
@@ -223,45 +230,3 @@ func shuffle(arr []string) {
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 }
-
-// end of helper functions
-
-// unused functions
-
-// random_pcg.h
-//
-// func randd() float64 {
-// 	proto_exp_offset := rand()
-// 	if proto_exp_offset == 0 {
-// 		return 0
-// 	}
-// 	var significand uint64 = (uint64(rand()) << 32) | uint64(rand()) | 0x8000000000000001
-// 	return math.Ldexp(float64(significand), -64-bits.LeadingZeros32(proto_exp_offset))
-// }
-//
-// func seed(p_seed uint64) {
-// 	current_seed = p_seed
-// 	pcg32_srandom_r(&pcg, current_seed, current_inc)
-// }
-// func randfn64(p_mean float64, p_deviation float64) float64 {
-// 	var temp float64 = randd()
-// 	if temp < 0.00001 {
-// 		temp += 0.00001 // this is what CMP_EPSILON is defined as
-// 	}
-// 	// Math_TAU is defined as 6.2831853071795864769252867666
-// 	Math_TAU := 6.2831853071795864769252867666
-// 	return float64(float32(p_mean + p_deviation*(math.Cos(Math_TAU*randd())*math.Sqrt(-2.0*math.Log(temp)))))
-// }
-
-// random_number_generator.h
-// func set_state(p_state uint64) { pcg.state = p_state } // this one is just unused in my code, but is something the RandomNumberGenerator object uses
-// func get_state() uint64        { return pcg.state }
-//
-// func Randomize() { // required for godot, but techincally will never be used since it just randomises, can only really be used for seeing which random numbers are more likely than others
-// 	seed((uint64(time.Now().Unix()+time.Now().UnixNano()/1000)*pcg.state + PCG_DEFAULT_INC_64))
-// }
-
-// random_pcg.cpp
-// func randomf64(p_from float64, p_to float64) float64 {
-// 	return randd()*(p_to-p_from) + p_from
-// }
