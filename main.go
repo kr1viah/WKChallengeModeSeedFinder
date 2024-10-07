@@ -27,15 +27,17 @@ var itemCosts = map[string]float64{
 
 var charList = [6]string{"basic", "mage", "laser", "melee", "pointer", "swarm"}
 
-var rng2 RandomNumberGenerator // rename to rng maybe?
+var rng RandomNumberGenerator
+var globalRng RandomNumberGenerator
 
 // windowkill
 
 func main() {
-	rng2.Initialise()
+	rng.Initialise()
+	globalRng.Initialise()
 
 	fmt.Println(djb2.SumString("Ab"))
-	rng2.Set_seed(3823837572363)
+	rng.Set_seed(3823837572363)
 
 	/* 	test seed, this seed should print:
 
@@ -51,39 +53,28 @@ func main() {
 	*/
 
 	// fmt.Println("state:", get_state())
-	fmt.Println("seed:", rng2.Get_seed())
+	fmt.Println("seed:", rng.Get_seed())
 
 	// intensity determines basis for other rolls
-	var intensity = rng2.Randf_range(0.20, 1.0)
+	var intensity = rng.Randf_range(0.20, 1.0)
 
-	var char = charList[int(rng2.Randi())%len(charList)]
-	var abilityChar = charList[int(rng2.Randi())%len(charList)]
-	var abilityLevel = 1.0 + math.Round(run(rng2.Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
+	var char = charList[int(rng.Randi())%len(charList)]
+	var abilityChar = charList[int(rng.Randi())%len(charList)]
+	var abilityLevel = 1.0 + math.Round(run(rng.Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
 
 	var itemCount float64 = float64(len(itemCategories))
 	// points determine item layout
-	var points = 0.66 * itemCount * rng2.Randf_range(0.5, 1.5) * (1.0 + 4.0*math.Pow(intensity, 1.5))
+	var points = 0.66 * itemCount * rng.Randf_range(0.5, 1.5) * (1.0 + 4.0*math.Pow(intensity, 1.5))
 
-	var itemDistSteepness = rng2.Randf_range(-0.5, 2.0)
+	var itemDistSteepness = rng.Randf_range(-0.5, 2.0)
 	var itemDistArea = 1.0 / (1.0 + math.Pow(2, 0.98*itemDistSteepness))
 
-	// windowkill uses the ""global"" randomness and shuffle()
-	// instead of that this saves the state (and inc)
-	// then sets the seed to the current seed (because setting the current seed advances the state 2 times im pretty sure, although doesnt really matter)
-	// and after calling shuffle() set the state (and inc) back to what it was before directly
-
-	var oldstate = rng2.state
-	var oldInc = rng2.inc
-
-	rng2.Set_seed(rng2.Get_seed())
-	shuffle(itemCategories)
-
-	rng2.inc = oldInc
-	rng2.state = oldstate
+	globalRng.Set_seed(rng.Get_seed())
+	globalRng.shuffle(itemCategories)
 
 	// chance to move offensive upgrades closer to end if not already
 
-	if rng2.Randf() < intensity {
+	if rng.Randf() < intensity {
 		multishotIdx := -1
 		for i, category := range itemCategories {
 			if category == "multiShot" {
@@ -95,11 +86,11 @@ func main() {
 		if multishotIdx != -1 {
 			itemCategories = append(itemCategories[:multishotIdx], itemCategories[multishotIdx+1:]...)
 		}
-		insertIdx := int32(itemCount) - 1 - rng2.Randi_range(0, 2)
+		insertIdx := int32(itemCount) - 1 - rng.Randi_range(0, 2)
 		itemCategories = append(itemCategories[:insertIdx], append([]string{"multiShot"}, itemCategories[insertIdx:]...)...)
 	}
 
-	if rng2.Randf() < intensity {
+	if rng.Randf() < intensity {
 		fireRateIdx := -1
 		for i, category := range itemCategories {
 			if category == "fireRate" {
@@ -111,7 +102,7 @@ func main() {
 		if fireRateIdx != -1 {
 			itemCategories = append(itemCategories[:fireRateIdx], itemCategories[fireRateIdx+1:]...)
 		}
-		insertIdx := int32(itemCount) - 1 - rng2.Randi_range(0, 2)
+		insertIdx := int32(itemCount) - 1 - rng.Randi_range(0, 2)
 		itemCategories = append(itemCategories[:insertIdx], append([]string{"fireRate"}, itemCategories[insertIdx:]...)...)
 	}
 
@@ -127,9 +118,9 @@ func main() {
 
 		var special = 0.0
 		if i == int(itemCount)-1 {
-			special += 4.0 * rng2.Randf_range(0.0, float32(math.Pow(intensity, 2.0)))
+			special += 4.0 * rng.Randf_range(0.0, float32(math.Pow(intensity, 2.0)))
 		}
-		amount := math.Max(0.0, 3.0*run(catT, itemDistSteepness, 1.0, 0.0)+3.0*clamp(rng2.Randfn(0.0, 0.15), -0.5, 0.5))
+		amount := math.Max(0.0, 3.0*run(catT, itemDistSteepness, 1.0, 0.0)+3.0*clamp(rng.Randfn(0.0, 0.15), -0.5, 0.5))
 		itemCounts[item] = int(clamp(math.Round(baseAmount+amount*((points/cost)/(1.0+5.0*itemDistArea))+special), 0.0, 26.0))
 		total += itemCounts[item]
 	}
@@ -137,11 +128,13 @@ func main() {
 	// balance for offensive upgrades
 	intensity = -0.05 + intensity*lerp(0.33, 1.2, smoothCorner((float64(itemCounts["multiShot"])*1.8+float64(itemCounts["fireRate"]))/12.0, 1.0, 1.0, 4.0))
 
-	var finalT = rng2.Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
+	var finalT = rng.Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
 	var startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0)
 
-	var r, g, b, _ = colorconv.HSVToRGB(rng2.Randf(), rng2.Randf(), float64(1.0)) // color
-	var colorState = rng2.Randi_range(0, 2)
+	var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0))
+	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
+
+	var colorState = rng.Randi_range(0, 2)
 
 	fmt.Println("char:", char)
 	fmt.Println("abilityChar:", abilityChar)
@@ -150,7 +143,7 @@ func main() {
 	fmt.Println("itemCounts:", itemCounts)
 	fmt.Println("startTime:", startTime)
 	fmt.Println("colorState:", colorState)
-	fmt.Println("color:", float32(r)/255, float32(g)/255, float32(b)/255, 1.0) // figure out how to pack r g and b into a single `color` variable
+	fmt.Println("color:", r, g, b, 1.0) // the `1.0` here is the alpha channel
 }
 
 //
@@ -219,7 +212,7 @@ func clamp(m_a, m_min, m_max float64) float64 {
 	return m_a
 }
 
-func shuffle(arr []string) {
+func (rng2 RandomNumberGenerator) shuffle(arr []string) {
 	n := len(arr)
 	if n <= 1 {
 		return
