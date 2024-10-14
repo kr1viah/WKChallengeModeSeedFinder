@@ -32,12 +32,20 @@ var globalRng RandomNumberGenerator
 
 // windowkill
 
-func main() {
-	rng.Initialise()
-	globalRng.Initialise()
+type loadout struct {
+	char         string
+	abilityChar  string
+	abilityLevel float64
+	itemCounts   map[string]int
+	startTime    float64
+	colorState   int32
+	r            float32
+	g            float32
+	b            float32
+}
 
+func main() {
 	fmt.Println(djb2.SumString("Ab"))
-	rng.Set_seed(3823837572363)
 
 	/* 	test seed, this seed should print:
 
@@ -52,8 +60,22 @@ func main() {
 	   	color: 1 0.75686276 0.75686276 1
 	*/
 
-	// fmt.Println("state:", get_state())
+	var loadout = Get_results(uint64(3823837572363))
 	fmt.Println("seed:", rng.Get_seed())
+	fmt.Println("char:", loadout.char)
+	fmt.Println("abilityChar:", loadout.abilityChar)
+	fmt.Println("abilityLevel:", loadout.abilityLevel)
+	fmt.Println("itemCounts:", loadout.itemCounts)
+	fmt.Println("startTime:", loadout.startTime)
+	fmt.Println("colorState:", loadout.colorState)
+	fmt.Println("color:", loadout.r, loadout.g, loadout.b, 1.0) // the `1.0` here is the alpha channel
+}
+
+func Get_results(seed uint64) loadout {
+	rng.Initialise()
+	globalRng.Initialise()
+
+	rng.Set_seed(seed)
 
 	// intensity determines basis for other rolls
 	var intensity = rng.Randf_range(0.20, 1.0)
@@ -135,25 +157,9 @@ func main() {
 	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
 
 	var colorState = rng.Randi_range(0, 2)
-
-	fmt.Println("char:", char)
-	fmt.Println("abilityChar:", abilityChar)
-	fmt.Println("abilityLevel:", abilityLevel)
-	fmt.Println("itemCategories:", itemCategories)
-	fmt.Println("itemCounts:", itemCounts)
-	fmt.Println("startTime:", startTime)
-	fmt.Println("colorState:", colorState)
-	fmt.Println("color:", r, g, b, 1.0) // the `1.0` here is the alpha channel
+	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, r, g, b})
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
 // helper functions
 
 func pinch(v float64) float64 { // function run() uses
