@@ -3,29 +3,17 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"time"
 
 	"github.com/crazy3lf/colorconv"
 	"github.com/dim13/djb2"
 )
 
-const ( // constants, defined in different
+const ( // constants, defined in different places
 	Math_TAU = 6.2831853071795864769252867666
+	charset  = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
-
-var itemCategories = []string{"speed", "fireRate", "multiShot", "wallPunch", "splashDamage", "piercing", "freezing", "infection"}
-
-var itemCosts = map[string]float64{
-	"speed":        1.0,
-	"fireRate":     2.8,
-	"multiShot":    3.3,
-	"wallPunch":    1.25,
-	"splashDamage": 2.0,
-	"piercing":     2.4,
-	"freezing":     1.5,
-	"infection":    2.15,
-}
-
-var charList = [6]string{"basic", "mage", "laser", "melee", "pointer", "swarm"}
 
 var rng RandomNumberGenerator
 var globalRng RandomNumberGenerator
@@ -44,9 +32,23 @@ type loadout struct {
 	b            float32
 }
 
-func main() {
-	fmt.Println(djb2.SumString("Ab"))
+var itemCats = []string{"speed", "fireRate", "multiShot", "wallPunch", "splashDamage", "piercing", "freezing", "infection"}
+var itemCosts = map[string]float64{
+	"speed":        1.0,
+	"fireRate":     2.8,
+	"multiShot":    3.3,
+	"wallPunch":    1.25,
+	"splashDamage": 2.0,
+	"piercing":     2.4,
+	"freezing":     1.5,
+	"infection":    2.15,
+}
 
+var charList = [6]string{"basic", "mage", "laser", "melee", "pointer", "swarm"}
+
+func main() {
+	fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
+	fmt.Println(Get_results(3823837572363))
 	/* 	test seed, this seed should print:
 
 	   	seed: 3823837572363
@@ -59,19 +61,46 @@ func main() {
 	   	colorState: 1
 	   	color: 1 0.75686276 0.75686276 1
 	*/
+	var start = time.Now()
+	var output loadout
 
-	var loadout = Get_results(uint64(3823837572363))
-	fmt.Println("seed:", rng.Get_seed())
-	fmt.Println("char:", loadout.char)
-	fmt.Println("abilityChar:", loadout.abilityChar)
-	fmt.Println("abilityLevel:", loadout.abilityLevel)
-	fmt.Println("itemCounts:", loadout.itemCounts)
-	fmt.Println("startTime:", loadout.startTime)
-	fmt.Println("colorState:", loadout.colorState)
-	fmt.Println("color:", loadout.r, loadout.g, loadout.b, 1.0) // the `1.0` here is the alpha channel
+	var seenSeeds = make([]uint64, 67108864)
+	var seenDuplicates []uint32
+	var i uint64 = 0
+	for i = 0; i < 40000000000; i++ {
+		var seed = djb2.SumString(strconv.FormatUint(i, 10))
+		index := seed / 64
+		bitPos := seed % 64
+		mask := uint64(1) << bitPos
+		if seenSeeds[index]&mask != 0 {
+			seenDuplicates = append(seenDuplicates, seed)
+			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
+			continue
+		}
+		output = Get_results(uint64(seed))
+		seenSeeds[seed/64] |= uint64(1) << seed % 64
+		lookingfor := 5
+		var c = true
+		for _, value := range output.itemCounts {
+			if value != lookingfor {
+				c = false
+			}
+		}
+		if c {
+			fmt.Println("found!", i)
+			fmt.Println(output)
+			break
+		}
+	}
+
+	fmt.Println("duplicates:", seenDuplicates)
+	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
+	fmt.Println("runtime:", time.Since(start))
 }
 
 func Get_results(seed uint64) loadout {
+	var itemCategories = make([]string, len(itemCats))
+	copy(itemCategories, itemCats)
 	rng.Initialise()
 	globalRng.Initialise()
 

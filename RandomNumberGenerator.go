@@ -19,6 +19,7 @@ type RandomNumberGenerator struct {
 func (rng *RandomNumberGenerator) Initialise() {
 	rng.p_inc = 1442695040888963407
 	rng.p_seed = 12047754176567800795
+	rng.current_seed = 0
 }
 
 func (rng *RandomNumberGenerator) randbound(bounds uint32) uint32 { // rand() with bounds
