@@ -10,9 +10,29 @@ import (
 	"github.com/dim13/djb2"
 )
 
+type upgrade int
+type Char int
+
 const ( // constants, defined in different places
-	Math_TAU = 6.2831853071795864769252867666
-	charset  = "abcdefghijklmnopqrstuvwxyz0123456789"
+	Math_TAU      = 6.2831853071795864769252867666
+	charset       = "abcdefghijklmnopqrstuvwxyz0123456789"
+	basic    Char = iota
+	mage
+	laser
+	melee
+	pointer
+	swarm
+)
+
+const (
+	speed upgrade = iota
+	fireRate
+	multiShot
+	wallPunch
+	splashDamage
+	piercing
+	freezing
+	infection
 )
 
 var rng RandomNumberGenerator
@@ -21,10 +41,10 @@ var globalRng RandomNumberGenerator
 // windowkill
 
 type loadout struct {
-	char         string
-	abilityChar  string
+	char         Char
+	abilityChar  Char
 	abilityLevel float64
-	itemCounts   map[string]int
+	itemCounts   map[upgrade]int
 	startTime    float64
 	colorState   int32
 	r            float32
@@ -32,19 +52,48 @@ type loadout struct {
 	b            float32
 }
 
-var itemCats = []string{"speed", "fireRate", "multiShot", "wallPunch", "splashDamage", "piercing", "freezing", "infection"}
-var itemCosts = map[string]float64{
-	"speed":        1.0,
-	"fireRate":     2.8,
-	"multiShot":    3.3,
-	"wallPunch":    1.25,
-	"splashDamage": 2.0,
-	"piercing":     2.4,
-	"freezing":     1.5,
-	"infection":    2.15,
+var itemCats = []upgrade{speed, fireRate, multiShot, wallPunch, splashDamage, piercing, freezing, infection}
+var itemCosts = map[upgrade]float64{
+	speed:        1.0,  // speed
+	fireRate:     2.8,  // firerate
+	multiShot:    3.3,  // multishot
+	wallPunch:    1.25, // wallpunch
+	splashDamage: 2.0,  // splashdamage
+	piercing:     2.4,  // piercing
+	freezing:     1.5,  //freezing
+	infection:    2.15, //infection
 }
 
-var charList = [6]string{"basic", "mage", "laser", "melee", "pointer", "swarm"}
+var charList = [6]Char{basic, mage, laser, melee, pointer, swarm}
+
+func bruteForce() {
+	var seenSeeds = make([]uint64, 67108864)
+	var seenDuplicates []uint64
+	var seenResults []uint32
+	var i uint64 = 0
+	var seed uint32 = 0
+	var start = time.Now()
+	for i = 0; i < 4294967600; i++ {
+		seed = djb2.SumString(strconv.FormatUint(i, 10))
+		index := seed / 64
+		bitPos := seed % 64
+		mask := uint64(1) << bitPos
+		if seenSeeds[index]&mask != 0 {
+			seenDuplicates = append(seenDuplicates, i)
+			seenResults = append(seenResults, seed)
+			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
+			continue
+		}
+		_ = Get_results(uint64(seed))
+		seenSeeds[seed/64] |= uint64(1) << seed % 64
+
+	}
+	fmt.Println("runtime:", time.Since(start))
+	fmt.Println(seed)
+	fmt.Println("duplicates:", seenDuplicates)
+	fmt.Println("duplicates:", seenResults)
+	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
+}
 
 func main() {
 	fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
@@ -61,45 +110,39 @@ func main() {
 	   	colorState: 1
 	   	color: 1 0.75686276 0.75686276 1
 	*/
+	// var output loadout
+
 	var start = time.Now()
-	var output loadout
-
-	var seenSeeds = make([]uint64, 67108864)
-	var seenDuplicates []uint32
-	var i uint64 = 0
-	for i = 0; i < 40000000000; i++ {
-		var seed = djb2.SumString(strconv.FormatUint(i, 10))
-		index := seed / 64
-		bitPos := seed % 64
-		mask := uint64(1) << bitPos
-		if seenSeeds[index]&mask != 0 {
-			seenDuplicates = append(seenDuplicates, seed)
-			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
-			continue
-		}
-		output = Get_results(uint64(seed))
-		seenSeeds[seed/64] |= uint64(1) << seed % 64
-		lookingfor := 5
-		var c = true
-		for _, value := range output.itemCounts {
-			if value != lookingfor {
-				c = false
-			}
-		}
-		if c {
-			fmt.Println("found!", i)
-			fmt.Println(output)
-			break
-		}
+	var i uint64
+	for i = 0; i < 10000000; i++ {
+		Get_results(i)
 	}
-
-	fmt.Println("duplicates:", seenDuplicates)
-	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
-	fmt.Println("runtime:", time.Since(start))
+	fmt.Println("avg runtime:", time.Since(start)/time.Duration(i))
+	fmt.Println("runtime in microseconds:", time.Since(start).Microseconds())
 }
 
+// var char Char
+// var intensity float64
+// var abilityChar Char
+// var abilityLevel float64
+// var itemCount float64
+// var points float64
+// var itemCategories = make([]upgrade, len(itemCats))
+// var itemDistSteepness float64
+// var itemDistArea float64
+// var total int
+// var catMax float64
+// var finalT float64
+// var startTime float64
+// var itemCounts = make(map[upgrade]int)
+// var cost float64
+// var item upgrade
+// var catT float64
+// var rInt, gInt, bInt uint8
+
+var itemCategories = make([]upgrade, len(itemCats))
+
 func Get_results(seed uint64) loadout {
-	var itemCategories = make([]string, len(itemCats))
 	copy(itemCategories, itemCats)
 	rng.Initialise()
 	globalRng.Initialise()
@@ -113,7 +156,7 @@ func Get_results(seed uint64) loadout {
 	var abilityChar = charList[int(rng.Randi())%len(charList)]
 	var abilityLevel = 1.0 + math.Round(run(rng.Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
 
-	var itemCount float64 = float64(len(itemCategories))
+	var itemCount = float64(len(itemCategories))
 	// points determine item layout
 	var points = 0.66 * itemCount * rng.Randf_range(0.5, 1.5) * (1.0 + 4.0*math.Pow(intensity, 1.5))
 
@@ -121,14 +164,14 @@ func Get_results(seed uint64) loadout {
 	var itemDistArea = 1.0 / (1.0 + math.Pow(2, 0.98*itemDistSteepness))
 
 	globalRng.Set_seed(rng.Get_seed())
-	globalRng.shuffle(itemCategories)
+	globalRng.shuffle(&itemCategories)
 
 	// chance to move offensive upgrades closer to end if not already
 
 	if rng.Randf() < intensity {
 		multishotIdx := -1
 		for i, category := range itemCategories {
-			if category == "multiShot" {
+			if category == multiShot {
 				multishotIdx = i
 				break
 			}
@@ -138,13 +181,13 @@ func Get_results(seed uint64) loadout {
 			itemCategories = append(itemCategories[:multishotIdx], itemCategories[multishotIdx+1:]...)
 		}
 		insertIdx := int32(itemCount) - 1 - rng.Randi_range(0, 2)
-		itemCategories = append(itemCategories[:insertIdx], append([]string{"multiShot"}, itemCategories[insertIdx:]...)...)
+		itemCategories = append(itemCategories[:insertIdx], append([]upgrade{multiShot}, itemCategories[insertIdx:]...)...)
 	}
 
 	if rng.Randf() < intensity {
 		fireRateIdx := -1
 		for i, category := range itemCategories {
-			if category == "fireRate" {
+			if category == fireRate {
 				fireRateIdx = i
 				break
 			}
@@ -154,10 +197,10 @@ func Get_results(seed uint64) loadout {
 			itemCategories = append(itemCategories[:fireRateIdx], itemCategories[fireRateIdx+1:]...)
 		}
 		insertIdx := int32(itemCount) - 1 - rng.Randi_range(0, 2)
-		itemCategories = append(itemCategories[:insertIdx], append([]string{"fireRate"}, itemCategories[insertIdx:]...)...)
+		itemCategories = append(itemCategories[:insertIdx], append([]upgrade{fireRate}, itemCategories[insertIdx:]...)...)
 	}
 
-	var itemCounts = make(map[string]int)
+	var itemCounts = make(map[upgrade]int)
 	var catMax = float64(itemCount - 1)
 	var total = 0
 	for i := 0; i < int(itemCount); i++ {
@@ -177,17 +220,20 @@ func Get_results(seed uint64) loadout {
 	}
 
 	// balance for offensive upgrades
-	intensity = -0.05 + intensity*lerp(0.33, 1.2, smoothCorner((float64(itemCounts["multiShot"])*1.8+float64(itemCounts["fireRate"]))/12.0, 1.0, 1.0, 4.0))
+	intensity = -0.05 + intensity*lerp(0.33, 1.2, smoothCorner((float64(itemCounts[multiShot])*1.8+float64(itemCounts[fireRate]))/12.0, 1.0, 1.0, 4.0))
 
 	var finalT = rng.Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
 	var startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0)
 
 	var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0))
-	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
+	r, g, b = float32(rInt)/255, float32(gInt)/255, float32(bInt)/255
 
-	var colorState = rng.Randi_range(0, 2)
+	colorState = rng.Randi_range(0, 2)
 	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, r, g, b})
 }
+
+var colorState int32
+var r, g, b float32
 
 // helper functions
 
@@ -247,13 +293,13 @@ func clamp(m_a, m_min, m_max float64) float64 {
 	return m_a
 }
 
-func (rng2 RandomNumberGenerator) shuffle(arr []string) {
-	n := len(arr)
+func (rng2 RandomNumberGenerator) shuffle(arr *[]upgrade) {
+	n := len((*arr))
 	if n <= 1 {
 		return
 	}
 	for i := n - 1; i > 0; i-- {
 		j := rng2.randbound(uint32(i + 1))
-		arr[i], arr[j] = arr[j], arr[i]
+		(*arr)[i], (*arr)[j] = (*arr)[j], (*arr)[i]
 	}
 }
