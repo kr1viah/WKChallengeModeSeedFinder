@@ -211,7 +211,6 @@ func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumbe
 		itemCategories = append(itemCategories[:insertIdx], append([]upgrade{fireRate}, itemCategories[insertIdx:]...)...)
 	}
 
-	itemCounts = make(map[upgrade]int)
 	var catMax = 7.0
 	var total = 0
 	for i := 0; i < 7; i++ {
@@ -239,7 +238,7 @@ func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumbe
 	var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0))
 	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
 
-	// var colorState = rng.Randi_range(0, 2)
+	var colorState = rng.Randi_range(0, 2)
 	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, r, g, b})
 }
 
