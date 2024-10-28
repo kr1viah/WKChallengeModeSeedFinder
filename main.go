@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/crazy3lf/colorconv"
@@ -13,10 +14,9 @@ import (
 type upgrade int
 type Char int
 
+const Math_TAU = 6.2831853071795864769252867666
 const ( // constants, defined in different places
-	Math_TAU      = 6.2831853071795864769252867666
-	charset       = "abcdefghijklmnopqrstuvwxyz0123456789"
-	basic    Char = iota
+	basic Char = iota
 	mage
 	laser
 	melee
@@ -34,9 +34,6 @@ const (
 	freezing
 	infection
 )
-
-var rng RandomNumberGenerator
-var globalRng RandomNumberGenerator
 
 // windowkill
 
@@ -66,14 +63,17 @@ var itemCosts = map[upgrade]float64{
 
 var charList = [6]Char{basic, mage, laser, melee, pointer, swarm}
 
-func bruteForce() {
-	var seenSeeds = make([]uint64, 67108864)
-	var seenDuplicates []uint64
-	var seenResults []uint32
-	var i uint64 = 0
+var seenDuplicates []uint64
+var seenResults []uint32
+var i uint64 = 0
+var seenSeeds = make([]uint64, 67108864)
+
+func bruteForce(wg *sync.WaitGroup) {
+	var rng RandomNumberGenerator
+	var globalRng RandomNumberGenerator
 	var seed uint32 = 0
-	var start = time.Now()
-	for i = 0; i < 4294967600; i++ {
+	for ; i < uint64(seedsToCheck); i++ {
+		// for i = 0; i < 4294967600; i++ {
 		seed = djb2.SumString(strconv.FormatUint(i, 10))
 		index := seed / 64
 		bitPos := seed % 64
@@ -84,20 +84,31 @@ func bruteForce() {
 			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
 			continue
 		}
-		_ = Get_results(uint64(seed))
+		_ = Get_results(uint64(seed), &rng, &globalRng)
 		seenSeeds[seed/64] |= uint64(1) << seed % 64
 
 	}
-	fmt.Println("runtime:", time.Since(start))
-	fmt.Println(seed)
-	fmt.Println("duplicates:", seenDuplicates)
-	fmt.Println("duplicates:", seenResults)
-	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
+	wg.Done()
 }
 
+var seedsToCheck = 100000000
+var threads = 4
+
 func main() {
-	fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
-	fmt.Println(Get_results(3823837572363))
+	// fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
+	// fmt.Println(Get_results(3823837572363))
+	var start = time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(threads)
+	var i = 0
+	for i = 0; i < threads; i++ {
+		go bruteForce(&wg)
+	}
+	wg.Wait()
+	fmt.Println("average runtime:", time.Since(start)/time.Duration(seedsToCheck))
+	fmt.Println("runtime:", time.Since(start))
+	fmt.Println("duplicates:", seenDuplicates)
+	fmt.Println("duplicates:", seenResults)
 	/* 	test seed, this seed should print:
 
 	   	seed: 3823837572363
@@ -112,13 +123,13 @@ func main() {
 	*/
 	// var output loadout
 
-	var start = time.Now()
-	var i uint64
-	for i = 0; i < 10000000; i++ {
-		Get_results(i)
-	}
-	fmt.Println("avg runtime:", time.Since(start)/time.Duration(i))
-	fmt.Println("runtime in microseconds:", time.Since(start).Microseconds())
+	// var start = time.Now()
+	// var i uint64
+	// for i = 0; i < 10000000; i++ {
+	// 	Get_results(i)
+	// }
+	// fmt.Println("avg runtime:", time.Since(start)/time.Duration(i))
+	// fmt.Println("runtime in microseconds:", time.Since(start).Microseconds())
 }
 
 // var char Char
@@ -134,15 +145,15 @@ func main() {
 // var catMax float64
 // var finalT float64
 // var startTime float64
-// var itemCounts = make(map[upgrade]int)
+
 // var cost float64
 // var item upgrade
 // var catT float64
 // var rInt, gInt, bInt uint8
 
-var itemCategories = make([]upgrade, len(itemCats))
-
-func Get_results(seed uint64) loadout {
+func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumberGenerator) loadout {
+	var itemCategories = make([]upgrade, len(itemCats))
+	var itemCounts = make(map[upgrade]int)
 	copy(itemCategories, itemCats)
 	rng.Initialise()
 	globalRng.Initialise()
@@ -152,8 +163,8 @@ func Get_results(seed uint64) loadout {
 	// intensity determines basis for other rolls
 	var intensity = rng.Randf_range(0.20, 1.0)
 
-	var char = charList[int(rng.Randi())%len(charList)]
-	var abilityChar = charList[int(rng.Randi())%len(charList)]
+	var char = charList[int(rng.Randi())%6]
+	var abilityChar = charList[int(rng.Randi())%6]
 	var abilityLevel = 1.0 + math.Round(run(rng.Randf(), 1.5/(1.0+intensity), 1.0, 0.0)*6)
 
 	var itemCount = float64(len(itemCategories))
@@ -200,10 +211,10 @@ func Get_results(seed uint64) loadout {
 		itemCategories = append(itemCategories[:insertIdx], append([]upgrade{fireRate}, itemCategories[insertIdx:]...)...)
 	}
 
-	var itemCounts = make(map[upgrade]int)
-	var catMax = float64(itemCount - 1)
+	itemCounts = make(map[upgrade]int)
+	var catMax = 7.0
 	var total = 0
-	for i := 0; i < int(itemCount); i++ {
+	for i := 0; i < 7; i++ {
 		var item = itemCategories[i]
 		var catT = float64(i) / catMax
 		var cost = itemCosts[item]
@@ -211,7 +222,7 @@ func Get_results(seed uint64) loadout {
 		baseAmount := 0.0
 
 		var special = 0.0
-		if i == int(itemCount)-1 {
+		if i == 7 {
 			special += 4.0 * rng.Randf_range(0.0, float32(math.Pow(intensity, 2.0)))
 		}
 		amount := math.Max(0.0, 3.0*run(catT, itemDistSteepness, 1.0, 0.0)+3.0*clamp(rng.Randfn(0.0, 0.15), -0.5, 0.5))
@@ -226,14 +237,14 @@ func Get_results(seed uint64) loadout {
 	var startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0)
 
 	var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0))
-	r, g, b = float32(rInt)/255, float32(gInt)/255, float32(bInt)/255
+	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
 
-	colorState = rng.Randi_range(0, 2)
+	// var colorState = rng.Randi_range(0, 2)
 	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, r, g, b})
 }
 
-var colorState int32
-var r, g, b float32
+// var colorState int32
+// var r, g, b float32
 
 // helper functions
 
