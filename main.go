@@ -15,25 +15,6 @@ type upgrade int
 type Char int
 
 const Math_TAU = 6.2831853071795864769252867666
-const ( // constants, defined in different places
-	basic Char = iota
-	mage
-	laser
-	melee
-	pointer
-	swarm
-)
-
-const (
-	speed upgrade = iota
-	fireRate
-	multiShot
-	wallPunch
-	splashDamage
-	piercing
-	freezing
-	infection
-)
 
 // windowkill
 
@@ -65,14 +46,14 @@ var charList = [6]Char{basic, mage, laser, melee, pointer, swarm}
 
 var seenDuplicates []uint64
 var seenResults []uint32
-var i uint64 = 0
 var seenSeeds = make([]uint64, 67108864)
 
-func bruteForce(wg *sync.WaitGroup) {
+func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
 	var rng RandomNumberGenerator
 	var globalRng RandomNumberGenerator
 	var seed uint32 = 0
-	for ; i < uint64(seedsToCheck); i++ {
+	var i uint64
+	for i = startingOffset; i < uint64(seedsToCheck); i = i + uint64(threads) {
 		seed = djb2.SumString(strconv.FormatUint(i, 10))
 		index := seed / 64
 		bitPos := seed % 64
@@ -83,11 +64,13 @@ func bruteForce(wg *sync.WaitGroup) {
 			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
 			continue
 		}
-		_ = Get_results(uint64(seed), &rng, &globalRng)
-		if i == 1000000 || test { // replace i == 1000000 with useful stuff
+		var result = Get_results(uint64(seed), &rng, &globalRng)
+		if result.abilityChar == pointer && result.char == pointer && i > 1000000 { // example
 			test = true
+			winningSeed = i
+		}
+		if test {
 			wg.Done()
-			winningSeed = strconv.FormatUint(i, 10)
 			return
 		}
 		seenSeeds[seed/64] |= uint64(1) << seed % 64
@@ -96,49 +79,63 @@ func bruteForce(wg *sync.WaitGroup) {
 }
 
 var seedsToCheck = 4294967296
-var threads = 10
-var winningSeed string
+var threads = 4
+var winningSeed uint64
 
 var test = false
 
+const (
+	basic Char = iota
+	mage
+	laser
+	melee
+	pointer
+	swarm
+)
+
+/* 	test seed:
+
+   	seed: 3823837572363
+   	char: laser
+   	abilityChar: mage
+   	abilityLevel: 1
+   	itemCategories: [wallPunch speed infection splashDamage multiShot fireRate piercing freezing]
+   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0]
+   	startTime: 641.089106798172
+   	colorState: 1
+   	color: 1 0.75686276 0.75686276 1
+*/
+
+const (
+	speed upgrade = iota
+	fireRate
+	multiShot
+	wallPunch
+	splashDamage
+	piercing
+	freezing
+	infection
+)
+
 func main() {
-	// fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
-	// fmt.Println(Get_results(3823837572363))
 
 	var start = time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(threads)
 	var w = 0
 	for w = 0; w < threads; w++ {
-		go bruteForce(&wg)
+		go bruteForce(&wg, uint64(w))
 	}
 	wg.Wait()
-	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
+	fmt.Println("average runtime:", time.Since(start)/time.Duration(winningSeed))
 	fmt.Println("runtime:", time.Since(start))
-	fmt.Println("duplicates:", seenDuplicates)
-	fmt.Println("duplicates:", seenResults)
+	fmt.Println("duplicate inputs:", seenDuplicates)
+	fmt.Println("duplicate seeds:", seenResults)
 	fmt.Println("winning seed:", winningSeed)
-	/* 	test seed, this seed should print:
 
-	   	seed: 3823837572363
-	   	char: laser
-	   	abilityChar: mage
-	   	abilityLevel: 1
-	   	itemCategories: [wallPunch speed infection splashDamage multiShot fireRate piercing freezing]
-	   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0]
-	   	startTime: 641.089106798172
-	   	colorState: 1
-	   	color: 1 0.75686276 0.75686276 1
-	*/
-	// var output loadout
-
-	// var start = time.Now()
-	// var i uint64
-	// for i = 0; i < 10000000; i++ {
-	// 	Get_results(i)
-	// }
-	// fmt.Println("avg runtime:", time.Since(start)/time.Duration(i))
-	// fmt.Println("runtime in microseconds:", time.Since(start).Microseconds())
+	// var rng RandomNumberGenerator
+	// var globalRng RandomNumberGenerator
+	// fmt.Println(Get_results(uint64(3823837572363), &rng, &globalRng))
 }
 
 // var char Char
@@ -184,7 +181,7 @@ func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumbe
 	var itemDistArea = 1.0 / (1.0 + math.Pow(2, 0.98*itemDistSteepness))
 
 	globalRng.Set_seed(rng.Get_seed())
-	globalRng.shuffle(&itemCategories)
+	globalRng.shuffle(itemCategories)
 
 	// chance to move offensive upgrades closer to end if not already
 
@@ -220,9 +217,10 @@ func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumbe
 		itemCategories = append(itemCategories[:insertIdx], append([]upgrade{fireRate}, itemCategories[insertIdx:]...)...)
 	}
 
+	itemCounts = make(map[upgrade]int)
 	var catMax = 7.0
 	var total = 0
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		var item = itemCategories[i]
 		var catT = float64(i) / catMax
 		var cost = itemCosts[item]
@@ -312,13 +310,13 @@ func clamp(m_a, m_min, m_max float64) float64 {
 	return m_a
 }
 
-func (rng2 RandomNumberGenerator) shuffle(arr *[]upgrade) {
-	n := len((*arr))
+func (rng2 RandomNumberGenerator) shuffle(arr []upgrade) {
+	n := len(arr)
 	if n <= 1 {
 		return
 	}
 	for i := n - 1; i > 0; i-- {
 		j := rng2.randbound(uint32(i + 1))
-		(*arr)[i], (*arr)[j] = (*arr)[j], (*arr)[i]
+		arr[i], arr[j] = arr[j], arr[i]
 	}
 }
