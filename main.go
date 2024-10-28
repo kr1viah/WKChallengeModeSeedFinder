@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/crazy3lf/colorconv"
 	"github.com/dim13/djb2"
 )
 
@@ -63,7 +62,7 @@ func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
 			continue
 		}
 		var result = Get_results(uint64(seed), &rng, &globalRng)
-		if result.abilityChar == pointer && result.char == pointer && i > 1000000 { // example
+		if result.abilityChar == pointer && result.char == pointer && result.itemCounts[multiShot] > 15 { // example
 			shouldFinish = true
 			winningSeed = i
 		}
@@ -106,37 +105,97 @@ var threads = 8
 
 func main() {
 
-	var start = time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(threads)
 	var w = 0
+	var start = time.Now()
 	for w = 0; w < threads; w++ {
 		go bruteForce(&wg, uint64(w))
 	}
 	wg.Wait()
-	fmt.Println("average runtime:", time.Since(start)/time.Duration(winningSeed))
-	fmt.Println("runtime:", time.Since(start))
-	fmt.Println("duplicate inputs:", seenDuplicates)
-	fmt.Println("duplicate seeds:", seenResults)
-	fmt.Println("winning seed:", winningSeed)
+	fmt.Println("Average runtime:", time.Since(start)/time.Duration(winningSeed))
+	fmt.Println("Runtime:", time.Since(start))
+	fmt.Println("Duplicate inputs:", seenDuplicates)
+	fmt.Println("Duplicate seeds:", seenResults)
+	var rng RandomNumberGenerator
+	var globalRng RandomNumberGenerator
+	Print_results(Get_results(winningSeed, &rng, &globalRng))
 
-	// var rng RandomNumberGenerator
-	// var globalRng RandomNumberGenerator
 	// fmt.Println(Get_results(uint64(3823837572363), &rng, &globalRng))
 
 	/* 	test seed:
 
 	   	seed: 3823837572363
-	   	char: laser
-	   	abilityChar: mage
+	   	char: laser (2)
+	   	abilityChar: mage (1)
 	   	abilityLevel: 1
-	   	itemCategories: [wallPunch speed infection splashDamage multiShot fireRate piercing freezing]
-	   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0]
+	   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0] (map[0:0 1:6 2:3 3:0 4:0 5:9 6:26 7:7])
 	   	startTime: 641.089106798172
 	   	colorState: 1
 	   	color: 1 0.75686276 0.75686276 1
 	*/
+}
 
+func Print_results(loadout loadout) {
+	fmt.Println("Seed: ", winningSeed)
+	switch loadout.char {
+	case basic:
+		fmt.Println("Character: epsilon")
+	case mage:
+		fmt.Println("Character: nyx")
+	case laser:
+		fmt.Println("Character: bastion")
+	case melee:
+		fmt.Println("Character: zephyr")
+	case pointer:
+		fmt.Println("Character: :)")
+	case swarm:
+		fmt.Println("Character: mebo")
+	}
+	switch loadout.abilityChar {
+	case basic:
+		fmt.Println("Ability: bellow")
+	case mage:
+		fmt.Println("Ability: halt")
+	case laser:
+		fmt.Println("Ability: torrent")
+	case melee:
+		fmt.Println("Ability: endure")
+	case pointer:
+		fmt.Println("Ability: detach")
+	case swarm:
+		fmt.Println("Ability: propagate")
+	}
+	fmt.Println("Ability level:", loadout.abilityLevel)
+	for i := 0; i <= 8; i++ {
+		switch i {
+		case 0:
+			fmt.Println("Level of speed:", loadout.itemCounts[upgrade(i)])
+		case 1:
+			fmt.Println("Level of fire rate:", loadout.itemCounts[upgrade(i)])
+		case 2:
+			fmt.Println("Level of multishot:", loadout.itemCounts[upgrade(i)])
+		case 3:
+			fmt.Println("Level of wall punch:", loadout.itemCounts[upgrade(i)])
+		case 4:
+			fmt.Println("Level of splash damage:", loadout.itemCounts[upgrade(i)])
+		case 5:
+			fmt.Println("Level of piercing:", loadout.itemCounts[upgrade(i)])
+		case 6:
+			fmt.Println("Level of freezing:", loadout.itemCounts[upgrade(i)])
+		case 7:
+			fmt.Println("Level of infection:", loadout.itemCounts[upgrade(i)])
+		}
+	}
+	fmt.Println("Starting time:", time.Second*time.Duration(loadout.startTime))
+	switch loadout.colorState {
+	case 0:
+		fmt.Println("Color mode: outline")
+	case 1:
+		fmt.Println("Color mode: outline, white filling")
+	case 2:
+		fmt.Println("Color mode: filling, white outline")
+	}
 }
 
 func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumberGenerator) loadout {
@@ -224,11 +283,12 @@ func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumbe
 	var finalT = rng.Randfn(float32(math.Pow(intensity, 1.2)), 0.05)
 	var startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0)
 
-	var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0))
-	var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
-
+	// var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0)) // im fairly certain this is not accurate in the slightest
+	// var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
+	rng.Randf()
+	rng.Randf()
 	var colorState = rng.Randi_range(0, 2)
-	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, r, g, b})
+	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, 0, 0, 0})
 }
 
 // var colorState int32
