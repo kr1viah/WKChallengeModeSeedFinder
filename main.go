@@ -87,6 +87,7 @@ func bruteForce(wg *sync.WaitGroup) {
 		if i == 1000000 || test { // replace i == 1000000 with useful stuff
 			test = true
 			wg.Done()
+			winningSeed = strconv.FormatUint(i, 10)
 			return
 		}
 		seenSeeds[seed/64] |= uint64(1) << seed % 64
@@ -96,6 +97,7 @@ func bruteForce(wg *sync.WaitGroup) {
 
 var seedsToCheck = 4294967296
 var threads = 10
+var winningSeed string
 
 var test = false
 
@@ -115,6 +117,7 @@ func main() {
 	fmt.Println("runtime:", time.Since(start))
 	fmt.Println("duplicates:", seenDuplicates)
 	fmt.Println("duplicates:", seenResults)
+	fmt.Println("winning seed:", winningSeed)
 	/* 	test seed, this seed should print:
 
 	   	seed: 3823837572363
