@@ -73,7 +73,6 @@ func bruteForce(wg *sync.WaitGroup) {
 	var globalRng RandomNumberGenerator
 	var seed uint32 = 0
 	for ; i < uint64(seedsToCheck); i++ {
-		// for i = 0; i < 4294967600; i++ {
 		seed = djb2.SumString(strconv.FormatUint(i, 10))
 		index := seed / 64
 		bitPos := seed % 64
@@ -85,27 +84,34 @@ func bruteForce(wg *sync.WaitGroup) {
 			continue
 		}
 		_ = Get_results(uint64(seed), &rng, &globalRng)
+		if i == 1000000 || test { // replace i == 1000000 with useful stuff
+			test = true
+			wg.Done()
+			return
+		}
 		seenSeeds[seed/64] |= uint64(1) << seed % 64
-
 	}
 	wg.Done()
 }
 
-var seedsToCheck = 100000000
-var threads = 4
+var seedsToCheck = 4294967296
+var threads = 10
+
+var test = false
 
 func main() {
 	// fmt.Println(Get_results(uint64(djb2.SumString(strconv.FormatUint(53569271, 10)))))
 	// fmt.Println(Get_results(3823837572363))
+
 	var start = time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(threads)
-	var i = 0
-	for i = 0; i < threads; i++ {
+	var w = 0
+	for w = 0; w < threads; w++ {
 		go bruteForce(&wg)
 	}
 	wg.Wait()
-	fmt.Println("average runtime:", time.Since(start)/time.Duration(seedsToCheck))
+	fmt.Println("average runtime:", time.Since(start)/time.Duration(i))
 	fmt.Println("runtime:", time.Since(start))
 	fmt.Println("duplicates:", seenDuplicates)
 	fmt.Println("duplicates:", seenResults)
