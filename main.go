@@ -11,12 +11,7 @@ import (
 	"github.com/dim13/djb2"
 )
 
-type upgrade int
-type Char int
-
 const Math_TAU = 6.2831853071795864769252867666
-
-// windowkill
 
 type loadout struct {
 	char         Char
@@ -30,7 +25,11 @@ type loadout struct {
 	b            float32
 }
 
+type upgrade int
+type Char int
+
 var itemCats = []upgrade{speed, fireRate, multiShot, wallPunch, splashDamage, piercing, freezing, infection}
+
 var itemCosts = map[upgrade]float64{
 	speed:        1.0,  // speed
 	fireRate:     2.8,  // firerate
@@ -52,8 +51,7 @@ func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
 	var rng RandomNumberGenerator
 	var globalRng RandomNumberGenerator
 	var seed uint32 = 0
-	var i uint64
-	for i = startingOffset; i < uint64(seedsToCheck); i = i + uint64(threads) {
+	for i := startingOffset; i < uint64(seedsToCheck); i = i + uint64(threads) {
 		seed = djb2.SumString(strconv.FormatUint(i, 10))
 		index := seed / 64
 		bitPos := seed % 64
@@ -66,10 +64,10 @@ func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
 		}
 		var result = Get_results(uint64(seed), &rng, &globalRng)
 		if result.abilityChar == pointer && result.char == pointer && i > 1000000 { // example
-			test = true
+			shouldFinish = true
 			winningSeed = i
 		}
-		if test {
+		if shouldFinish {
 			wg.Done()
 			return
 		}
@@ -78,11 +76,9 @@ func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
 	wg.Done()
 }
 
-var seedsToCheck = 4294967296
-var threads = 4
-var winningSeed uint64
+var winningSeed uint64 = 0
 
-var test = false
+var shouldFinish = false
 
 const (
 	basic Char = iota
@@ -92,19 +88,6 @@ const (
 	pointer
 	swarm
 )
-
-/* 	test seed:
-
-   	seed: 3823837572363
-   	char: laser
-   	abilityChar: mage
-   	abilityLevel: 1
-   	itemCategories: [wallPunch speed infection splashDamage multiShot fireRate piercing freezing]
-   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0]
-   	startTime: 641.089106798172
-   	colorState: 1
-   	color: 1 0.75686276 0.75686276 1
-*/
 
 const (
 	speed upgrade = iota
@@ -116,6 +99,10 @@ const (
 	freezing
 	infection
 )
+
+// var seedsToCheck = 4294967296
+var seedsToCheck = 4294997296
+var threads = 8
 
 func main() {
 
@@ -136,26 +123,21 @@ func main() {
 	// var rng RandomNumberGenerator
 	// var globalRng RandomNumberGenerator
 	// fmt.Println(Get_results(uint64(3823837572363), &rng, &globalRng))
+
+	/* 	test seed:
+
+	   	seed: 3823837572363
+	   	char: laser
+	   	abilityChar: mage
+	   	abilityLevel: 1
+	   	itemCategories: [wallPunch speed infection splashDamage multiShot fireRate piercing freezing]
+	   	itemCounts: map[fireRate:6 freezing:26 infection:7 multiShot:3 piercing:9 speed:0 splashDamage:0 wallPunch:0]
+	   	startTime: 641.089106798172
+	   	colorState: 1
+	   	color: 1 0.75686276 0.75686276 1
+	*/
+
 }
-
-// var char Char
-// var intensity float64
-// var abilityChar Char
-// var abilityLevel float64
-// var itemCount float64
-// var points float64
-// var itemCategories = make([]upgrade, len(itemCats))
-// var itemDistSteepness float64
-// var itemDistArea float64
-// var total int
-// var catMax float64
-// var finalT float64
-// var startTime float64
-
-// var cost float64
-// var item upgrade
-// var catT float64
-// var rInt, gInt, bInt uint8
 
 func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumberGenerator) loadout {
 	var itemCategories = make([]upgrade, len(itemCats))
