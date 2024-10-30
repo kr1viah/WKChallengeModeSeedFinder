@@ -104,18 +104,34 @@ var winningSeed string = ""
 var seedsChecked = 0
 var seedsToCheck = 10294997296
 var threads = 8
+var prefix = ""
 
 func endBruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	bruteForce(id, wg, prefix)
 	wg.Done()
 }
-
+func getCombination(characterSet []string, index int) string {
+	base := len(characterSet)
+	combination := ""
+	for index > 0 {
+		combination = characterSet[index%base] + combination
+		index /= base
+	}
+	return combination
+}
 func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(threads)
 	var start = time.Now()
-	for w := 0; w < threads; w++ {
-		go endBruteForce(w, &wg, ""+characterSet[w])
+	if threads > len(characterSet) {
+		for t := 0; t < threads; t++ {
+			thirdParam := prefix + getCombination(characterSet, t)
+			go endBruteForce(t, &wg, thirdParam)
+		}
+	} else {
+		for t := 0; t < threads; t++ {
+			go endBruteForce(t, &wg, prefix+characterSet[t])
+		}
 	}
 	wg.Wait()
 	if winningSeed != "" {
