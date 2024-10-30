@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"sync"
 	"time"
 
@@ -30,54 +29,24 @@ type Char int
 var itemCats = []upgrade{speed, fireRate, multiShot, wallPunch, splashDamage, piercing, freezing, infection}
 
 var itemCosts = map[upgrade]float64{
-	speed:        1.0,  // speed
-	fireRate:     2.8,  // firerate
-	multiShot:    3.3,  // multishot
-	wallPunch:    1.25, // wallpunch
-	splashDamage: 2.0,  // splashdamage
-	piercing:     2.4,  // piercing
-	freezing:     1.5,  //freezing
-	infection:    2.15, //infection
+	speed:        1.0,
+	fireRate:     2.8,
+	multiShot:    3.3,
+	wallPunch:    1.25,
+	splashDamage: 2.0,
+	piercing:     2.4,
+	freezing:     1.5,
+	infection:    2.15,
 }
 
 var charList = [6]Char{basic, mage, laser, melee, pointer, swarm}
 
-var seenDuplicates []uint64
-var seenResults []uint32
-var seenSeeds = make([]uint64, 67108864)
+var seenSeeds = make([]bool, 4294967296)
 
-func bruteForce(wg *sync.WaitGroup, startingOffset uint64) {
-	var rng RandomNumberGenerator
-	var globalRng RandomNumberGenerator
-	var seed uint32 = 0
-	for i := startingOffset; i < uint64(seedsToCheck); i = i + uint64(threads) {
-		seed = djb2.SumString(strconv.FormatUint(i, 10))
-		index := seed / 64
-		bitPos := seed % 64
-		mask := uint64(1) << bitPos
-		if seenSeeds[index]&mask != 0 {
-			seenDuplicates = append(seenDuplicates, i)
-			seenResults = append(seenResults, seed)
-			fmt.Println("seen! seed:", seed, "i:", i, "hash position:", seenSeeds[seed/64]&uint64(1)<<seed%64)
-			continue
-		}
-		var result = Get_results(uint64(seed), &rng, &globalRng)
-		if result.abilityChar == pointer && result.char == pointer && result.itemCounts[multiShot] > 15 { // example
-			shouldFinish = true
-			winningSeed = i
-		}
-		if shouldFinish {
-			wg.Done()
-			return
-		}
-		seenSeeds[seed/64] |= uint64(1) << seed % 64
-	}
-	wg.Done()
-}
-
-var winningSeed uint64 = 0
-
-var shouldFinish = false
+var characterSet = []string{
+	"0", "1", "2", "2", "3", "4", "5", "6", "7", "8", "9",
+	"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+} // can remove any of these, windowkill will not accept capital letters or any others from these
 
 const (
 	basic Char = iota
@@ -99,30 +68,66 @@ const (
 	infection
 )
 
-// var seedsToCheck = 4294967296
-var seedsToCheck = 4294997296
+var shouldStop = false
+
+func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
+	if shouldStop {
+		return
+	}
+	if seedsChecked > seedsToCheck {
+		shouldStop = true
+		return
+	}
+	seed := djb2.SumString(prefix)
+	seedsChecked++
+	if seenSeeds[seed] {
+		return
+	}
+	seenSeeds[seed] = true
+	var loadout = Get_results(uint64(seed))
+	if seedsChecked > 10000000 && loadout.abilityChar == mage && loadout.char == mage && loadout.itemCounts[multiShot] > 19 && loadout.itemCounts[fireRate] > 21 { // example
+		shouldStop = true
+		winningSeed = prefix
+		winningResult = loadout
+	}
+	if len(prefix) == 14 {
+		return
+	}
+	for _, char := range characterSet {
+		bruteForce(id, wg, prefix+char)
+	}
+}
+
+var winningResult loadout
+var winningSeed string = ""
+
+var seedsChecked = 0
+var seedsToCheck = 10294997296
 var threads = 8
 
-func main() {
+func endBruteForce(id int, wg *sync.WaitGroup, prefix string) {
+	bruteForce(id, wg, prefix)
+	wg.Done()
+}
 
+func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(threads)
-	var w = 0
 	var start = time.Now()
-	for w = 0; w < threads; w++ {
-		go bruteForce(&wg, uint64(w))
+	for w := 0; w < threads; w++ {
+		go endBruteForce(w, &wg, ""+characterSet[w])
 	}
 	wg.Wait()
-	fmt.Println("Average runtime:", time.Since(start)/time.Duration(winningSeed))
-	fmt.Println("Runtime:", time.Since(start))
-	fmt.Println("Duplicate inputs:", seenDuplicates)
-	fmt.Println("Duplicate seeds:", seenResults)
-	var rng RandomNumberGenerator
-	var globalRng RandomNumberGenerator
-	Print_results(Get_results(winningSeed, &rng, &globalRng))
+	if winningSeed != "" {
+		fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
+		fmt.Println("Runtime:", time.Since(start))
+		fmt.Println("Seeds checked:", seedsChecked)
+		Print_results(winningResult)
+	} else {
+		fmt.Println("Seed not found!")
+	}
 
-	// fmt.Println(Get_results(uint64(3823837572363), &rng, &globalRng))
-
+	// Print_results(Get_results(uint64(3823837572363)))
 	/* 	test seed:
 
 	   	seed: 3823837572363
@@ -144,6 +149,7 @@ func Print_results(loadout loadout) {
 	case mage:
 		fmt.Println("Character: nyx")
 	case laser:
+
 		fmt.Println("Character: bastion")
 	case melee:
 		fmt.Println("Character: zephyr")
@@ -198,7 +204,9 @@ func Print_results(loadout loadout) {
 	}
 }
 
-func Get_results(seed uint64, rng *RandomNumberGenerator, globalRng *RandomNumberGenerator) loadout {
+func Get_results(seed uint64) loadout {
+	var rng RandomNumberGenerator
+	var globalRng RandomNumberGenerator
 	var itemCategories = make([]upgrade, len(itemCats))
 	var itemCounts = make(map[upgrade]int)
 	copy(itemCategories, itemCats)
