@@ -85,10 +85,9 @@ func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	}
 	seenSeeds[seed] = true
 	var loadout = Get_results(uint64(seed))
-	if seedsChecked > 10000000 && loadout.abilityChar == mage && loadout.char == mage && loadout.itemCounts[multiShot] > 19 && loadout.itemCounts[fireRate] > 21 { // example
+	if loadout.abilityChar == mage && loadout.char == mage && loadout.itemCounts[multiShot] > 19 && loadout.itemCounts[fireRate] > 21 { // example
 		shouldStop = true
 		winningSeed = prefix
-		winningResult = loadout
 	}
 	if len(prefix) == 14 {
 		return
@@ -98,7 +97,6 @@ func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	}
 }
 
-var winningResult loadout
 var winningSeed string = ""
 
 var seedsChecked = 0
@@ -106,39 +104,31 @@ var seedsToCheck = 10294997296
 var threads = 8
 var prefix = ""
 
-func endBruteForce(id int, wg *sync.WaitGroup, prefix string) {
-	bruteForce(id, wg, prefix)
-	wg.Done()
-}
-func getCombination(characterSet []string, index int) string {
-	base := len(characterSet)
-	combination := ""
-	for index > 0 {
-		combination = characterSet[index%base] + combination
-		index /= base
-	}
-	return combination
-}
 func main() {
-	wg := sync.WaitGroup{}
+	var wg = sync.WaitGroup{}
 	wg.Add(threads)
+
 	var start = time.Now()
-	if threads > len(characterSet) {
-		for t := 0; t < threads; t++ {
-			thirdParam := prefix + getCombination(characterSet, t)
-			go endBruteForce(t, &wg, thirdParam)
+
+	for t := 0; t < threads; t++ {
+		if threads > len(characterSet) {
+			go func() {
+				bruteForce(t, &wg, prefix+getCombination(characterSet, t))
+				wg.Done()
+			}()
+			continue
 		}
-	} else {
-		for t := 0; t < threads; t++ {
-			go endBruteForce(t, &wg, prefix+characterSet[t])
-		}
+		go func() {
+			bruteForce(t, &wg, prefix+characterSet[t])
+			wg.Done()
+		}()
 	}
 	wg.Wait()
-	if winningSeed != "" {
+	if winningSeed != prefix {
 		fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
 		fmt.Println("Runtime:", time.Since(start))
 		fmt.Println("Seeds checked:", seedsChecked)
-		Print_results(winningResult)
+		Print_results(Get_results(uint64(djb2.SumString(winningSeed))))
 	} else {
 		fmt.Println("Seed not found!")
 	}
@@ -385,4 +375,14 @@ func (rng2 RandomNumberGenerator) shuffle(arr []upgrade) {
 		j := rng2.randbound(uint32(i + 1))
 		arr[i], arr[j] = arr[j], arr[i]
 	}
+}
+
+func getCombination(characterSet []string, index int) string {
+	var base = len(characterSet)
+	var combination = ""
+	for index > 0 {
+		combination = characterSet[index%base] + combination
+		index /= base
+	}
+	return combination
 }
