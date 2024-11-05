@@ -46,7 +46,7 @@ var seenSeeds = make([]bool, 4294967296)
 var characterSet = []string{
 	"0", "1", "2", "2", "3", "4", "5", "6", "7", "8", "9",
 	"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
-} // can remove any of these, windowkill will not accept capital letters or any others from these
+} // can remove any of these, windowkill will not accept capital letters or any others not from these
 
 const (
 	basic Char = iota
@@ -85,9 +85,24 @@ func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	}
 	seenSeeds[seed] = true
 	var loadout = Get_results(uint64(seed))
-	if loadout.abilityChar == mage && loadout.char == mage && loadout.itemCounts[multiShot] > 19 && loadout.itemCounts[fireRate] > 21 { // example
-		shouldStop = true
-		winningSeed = prefix
+	if loadout.abilityChar == mage && loadout.char == melee && loadout.itemCounts[multiShot] > 10 && loadout.itemCounts[fireRate] > 20 && loadout.itemCounts[speed] > 10 && loadout.abilityLevel > 4 && int(loadout.startTime)%60 > 50 {
+		var foundMiasma = false
+		var foundOrbArray = false
+		var bossOrder = Get_bosses(uint64(seed))
+		for i := 0; i < 4; i++ {
+			if bossOrder[i] == "BossGermSource" {
+				foundMiasma = true
+				continue
+			}
+			if bossOrder[i] == "BossOrb" {
+				foundOrbArray = true
+				continue
+			}
+		}
+		if foundMiasma && foundOrbArray {
+			shouldStop = true
+			winningSeed = prefix
+		}
 	}
 	if len(prefix) == 14 {
 		return
@@ -129,6 +144,7 @@ func main() {
 		fmt.Println("Runtime:", time.Since(start))
 		fmt.Println("Seeds checked:", seedsChecked)
 		Print_results(Get_results(uint64(djb2.SumString(winningSeed))))
+		fmt.Println("Boss order:", Get_bosses(uint64(djb2.SumString(winningSeed))))
 	} else {
 		fmt.Println("Seed not found!")
 	}
@@ -208,6 +224,29 @@ func Print_results(loadout loadout) {
 	case 2:
 		fmt.Println("Color mode: filling, white outline")
 	}
+}
+
+func Get_bosses(seed uint64) []string {
+	var rng RandomNumberGenerator
+	rng.Set_seed(seed)
+	var bossQueue = []string{}
+	var germBuildup = rng.Randf_range(-1.0, 2.0)
+	var germsSpawned = 0
+	for i := 0; i < 10; i++ {
+		var addQueue = []string{"BossSpike", "BossSnake", "BossSlime", "BossSpike", "BossSnake", "BossSlime", "BossVirus"}
+		if rng.Randf() < 0.33 {
+			addQueue = append(addQueue, "BossOrb")
+		}
+		germBuildup += 0.5 * float64(len(addQueue))
+		if germBuildup > 5.0*(1.0+1.0*float64(germsSpawned)) {
+			germBuildup = rng.Randf_range(-2.0, 2.0)
+			germsSpawned += 1
+			addQueue = append(addQueue, "BossGermSource")
+		}
+		rng.shuffleString(addQueue)
+		bossQueue = append(bossQueue, addQueue...)
+	}
+	return bossQueue
 }
 
 func Get_results(seed uint64) loadout {
@@ -385,4 +424,15 @@ func getCombination(characterSet []string, index int) string {
 		index /= base
 	}
 	return combination
+}
+
+func (rng2 RandomNumberGenerator) shuffleString(arr []string) {
+	n := len(arr)
+	if n <= 1 {
+		return
+	}
+	for i := n - 1; i > 0; i-- {
+		j := rng2.randbound(uint32(i + 1))
+		arr[i], arr[j] = arr[j], arr[i]
+	}
 }
