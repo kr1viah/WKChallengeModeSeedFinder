@@ -85,21 +85,17 @@ func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	}
 	seenSeeds[seed] = true
 	var loadout = Get_results(uint64(seed))
-	if loadout.abilityChar == mage && loadout.char == melee && loadout.itemCounts[multiShot] > 10 && loadout.itemCounts[fireRate] > 20 && loadout.itemCounts[speed] > 10 && loadout.abilityLevel > 4 && int(loadout.startTime)%60 > 50 {
-		var foundMiasma = false
-		var foundOrbArray = false
+	if loadout.abilityChar != mage && loadout.char == melee && loadout.itemCounts[multiShot] > 10 && loadout.itemCounts[fireRate] > 20 && loadout.itemCounts[speed] > 10 && loadout.abilityLevel > 4 && int(loadout.startTime)%120 >= 110 {
+		var foundSuitableSeed = false
 		var bossOrder = Get_bosses(uint64(seed))
-		for i := 0; i < 4; i++ {
-			if bossOrder[i] == "BossGermSource" {
-				foundMiasma = true
-				continue
-			}
-			if bossOrder[i] == "BossOrb" {
-				foundOrbArray = true
-				continue
-			}
+		if bossOrder[1] == "BossGermSource" && bossOrder[0] == "BossOrb" {
+			foundSuitableSeed = true
 		}
-		if foundMiasma && foundOrbArray {
+		if bossOrder[0] == "BossGermSource" && bossOrder[1] == "BossOrb" {
+			foundSuitableSeed = true
+		}
+		if foundSuitableSeed {
+
 			shouldStop = true
 			winningSeed = prefix
 		}
@@ -116,38 +112,44 @@ var winningSeed string = ""
 
 var seedsChecked = 0
 var seedsToCheck = 10294997296
-var threads = 8
+var threads = 12
 var prefix = ""
 
 func main() {
-	var wg = sync.WaitGroup{}
-	wg.Add(threads)
-
-	var start = time.Now()
-
-	for t := 0; t < threads; t++ {
-		if threads > len(characterSet) {
-			go func() {
-				bruteForce(t, &wg, prefix+getCombination(characterSet, t))
-				wg.Done()
-			}()
-			continue
-		}
-		go func() {
-			bruteForce(t, &wg, prefix+characterSet[t])
-			wg.Done()
-		}()
+	var rng RandomNumberGenerator
+	rng.Initialise()
+	rng.Set_seed(20)
+	for i := 0; i < 10; i++ {
+		fmt.Println(i, ":", rng.Globalrandf_range(0, 50))
 	}
-	wg.Wait()
-	if winningSeed != prefix {
-		fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
-		fmt.Println("Runtime:", time.Since(start))
-		fmt.Println("Seeds checked:", seedsChecked)
-		Print_results(Get_results(uint64(djb2.SumString(winningSeed))))
-		fmt.Println("Boss order:", Get_bosses(uint64(djb2.SumString(winningSeed))))
-	} else {
-		fmt.Println("Seed not found!")
-	}
+	// var wg = sync.WaitGroup{}
+	// wg.Add(threads)
+
+	// var start = time.Now()
+
+	// for t := 0; t < threads; t++ {
+	// 	if threads > len(characterSet) {
+	// 		go func() {
+	// 			bruteForce(t, &wg, prefix+getCombination(characterSet, t))
+	// 			wg.Done()
+	// 		}()
+	// 		continue
+	// 	}
+	// 	go func() {
+	// 		bruteForce(t, &wg, prefix+characterSet[t])
+	// 		wg.Done()
+	// 	}()
+	// }
+	// wg.Wait()
+	// if winningSeed != prefix {
+	// 	fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
+	// 	fmt.Println("Runtime:", time.Since(start))
+	// 	fmt.Println("Seeds checked:", seedsChecked)
+	// 	Print_results(Get_results(uint64(djb2.SumString(winningSeed))))
+	// 	fmt.Println("Boss order:", Get_bosses(uint64(djb2.SumString(winningSeed))))
+	// } else {
+	// 	fmt.Println("Seed not found!")
+	// }
 
 	// Print_results(Get_results(uint64(3823837572363)))
 	/* 	test seed:
@@ -228,22 +230,32 @@ func Print_results(loadout loadout) {
 
 func Get_bosses(seed uint64) []string {
 	var rng RandomNumberGenerator
+	rng.Initialise()
 	rng.Set_seed(seed)
 	var bossQueue = []string{}
-	var germBuildup = rng.Randf_range(-1.0, 2.0)
+	var germBuildup = rng.Globalrandf_range(-1.0, 2.0)
+	fmt.Println(germBuildup)
 	var germsSpawned = 0
 	for i := 0; i < 10; i++ {
-		var addQueue = []string{"BossSpike", "BossSnake", "BossSlime", "BossSpike", "BossSnake", "BossSlime", "BossVirus"}
-		if rng.Randf() < 0.33 {
+		var addQueue = []string{
+			"BossSpike", "BossSnake", "BossSlime",
+			"BossSpike", "BossSnake", "BossSlime", "BossVirus",
+		}
+		var test = rng.Globalrandf()
+		if test < 0.33 {
+			fmt.Println("Orbed")
 			addQueue = append(addQueue, "BossOrb")
 		}
 		germBuildup += 0.5 * float64(len(addQueue))
+		fmt.Println("germBuildUp:", germBuildup)
 		if germBuildup > 5.0*(1.0+1.0*float64(germsSpawned)) {
-			germBuildup = rng.Randf_range(-2.0, 2.0)
-			germsSpawned += 1
+			germBuildup = rng.Globalrandf_range(-2.0, 2.0)
+			germsSpawned++
 			addQueue = append(addQueue, "BossGermSource")
 		}
+		fmt.Println(addQueue)
 		rng.shuffleString(addQueue)
+		fmt.Println(addQueue)
 		bossQueue = append(bossQueue, addQueue...)
 	}
 	return bossQueue

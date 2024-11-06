@@ -40,6 +40,15 @@ func (rng *RandomNumberGenerator) randf32() float32 {
 	return float32(math.Ldexp(float64(rng.Randi()|0x80000001), -32-bits.LeadingZeros32(proto_exp_offset)))
 }
 
+func (rng *RandomNumberGenerator) randf64() float64 {
+	var proto_exp_offset uint32 = rng.Randi()
+	if proto_exp_offset == 0 {
+		return 0
+	}
+	var significand uint64 = ((uint64(rng.Randi())) << 32) | uint64(rng.Randi()) | 0x8000000000000001
+	return math.Ldexp(float64(significand), -64-bits.LeadingZeros32(proto_exp_offset))
+}
+
 func (rng *RandomNumberGenerator) Set_seed(p_seed uint64) {
 	rng.current_seed = p_seed
 	rng.state = uint64(0)
@@ -95,4 +104,12 @@ func (rng *RandomNumberGenerator) Randi() uint32 {
 
 func (rng *RandomNumberGenerator) Randomize() { // required for godot, but techincally will never be used since it just randomises, can only really be used for seeing which random numbers are more likely than others
 	rng.Set_seed((uint64(time.Now().Unix()+time.Now().UnixNano()/1000)*rng.state + 1442695040888963407)) // PCG_DEFAULT_INC_64
+}
+
+func (rng *RandomNumberGenerator) Globalrandf() float64 {
+	return float64(float32(rng.Randi()) / float32(4294967295))
+}
+
+func (rng *RandomNumberGenerator) Globalrandf_range(p_from float64, p_to float64) float64 {
+	return rng.randf64()*(p_to-p_from) + p_from
 }
