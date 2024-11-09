@@ -85,13 +85,10 @@ func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
 	}
 	seenSeeds[seed] = true
 	var loadout = Get_results(uint64(seed))
-	if loadout.abilityChar != mage && loadout.char == melee && loadout.itemCounts[multiShot] > 10 && loadout.itemCounts[fireRate] > 20 && loadout.itemCounts[speed] > 10 && loadout.abilityLevel > 4 && int(loadout.startTime)%120 >= 110 {
+	if loadout.char == swarm && loadout.itemCounts[multiShot] == 26 { // && int(loadout.startTime)%120 >= 119
 		var foundSuitableSeed = false
 		var bossOrder = Get_bosses(uint64(seed))
-		if bossOrder[1] == "BossGermSource" && bossOrder[0] == "BossOrb" {
-			foundSuitableSeed = true
-		}
-		if bossOrder[0] == "BossGermSource" && bossOrder[1] == "BossOrb" {
+		if bossOrder[1] == "BossSnake" && bossOrder[0] == "BossSnake" {
 			foundSuitableSeed = true
 		}
 		if foundSuitableSeed {
@@ -140,7 +137,7 @@ func main() {
 		fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
 		fmt.Println("Runtime:", time.Since(start))
 		fmt.Println("Seeds checked:", seedsChecked)
-		Print_results(Get_results(uint64(djb2.SumString(winningSeed))))
+		Print_results(winningSeed)
 		fmt.Println("Boss order:", Get_bosses(uint64(djb2.SumString(winningSeed))))
 	} else {
 		fmt.Println("Seed not found!")
@@ -160,15 +157,15 @@ func main() {
 	*/
 }
 
-func Print_results(loadout loadout) {
-	fmt.Println("Seed: ", winningSeed)
+func Print_results(seed string) {
+	fmt.Println("Seed: ", seed)
+	loadout := Get_results(uint64(djb2.SumString(seed)))
 	switch loadout.char {
 	case basic:
 		fmt.Println("Character: epsilon")
 	case mage:
 		fmt.Println("Character: nyx")
 	case laser:
-
 		fmt.Println("Character: bastion")
 	case melee:
 		fmt.Println("Character: zephyr")
@@ -195,21 +192,21 @@ func Print_results(loadout loadout) {
 	for i := 0; i <= 8; i++ {
 		switch i {
 		case 0:
-			fmt.Println("Level of speed:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", speedReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 1:
-			fmt.Println("Level of fire rate:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", fireRateReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 2:
-			fmt.Println("Level of multishot:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", multiShotReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 3:
-			fmt.Println("Level of wall punch:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", wallPunchReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 4:
-			fmt.Println("Level of splash damage:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", splashDamageReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 5:
-			fmt.Println("Level of piercing:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", piercingReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 6:
-			fmt.Println("Level of freezing:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", freezingReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		case 7:
-			fmt.Println("Level of infection:", loadout.itemCounts[upgrade(i)])
+			fmt.Println("Level of", infectionReplacements[int(loadout.char)]+":", loadout.itemCounts[upgrade(i)])
 		}
 	}
 	fmt.Println("Starting time:", time.Second*time.Duration(loadout.startTime))
@@ -223,13 +220,15 @@ func Print_results(loadout loadout) {
 	}
 }
 
-// var rng RandomNumberGenerator
-// rng.Initialise()
-// rng.Set_seed(20)
-//
-//	for i := 0; i < 10; i++ {
-//		fmt.Println(i, ":", rng.Globalrandf_range(0, 50))
-//	}
+var speedReplacements = []string{"speed", "speed", "speed", "speed", "speed", "speed"}
+var fireRateReplacements = []string{"fire rate", "fire rate", "fire rate", "fire rate", "fire rate", "tick rate"}
+var multiShotReplacements = []string{"multishot", "multishot", "laser size", "multishot", "multishot", "+1 body"}
+var wallPunchReplacements = []string{"wall punch", "wall punch", "wall punch", "wall punch", "wall punch", "wall punch"}
+var splashDamageReplacements = []string{"splash damage", "splash damage", "splash damage", "splash damage", "splash damage", "splash damage"}
+var piercingReplacements = []string{"piercing", "crowd control", "piercing", "range", "chase speed", "recover speed"}
+var freezingReplacements = []string{"freezing", "freezing", "freezing", "freezing", "freezing", "freezing"}
+var infectionReplacements = []string{"infection", "infection", "infection", "infection", "infection", "infection"}
+
 func Get_bosses(seed uint64) []string {
 	var rng RandomNumberGenerator
 	rng.Initialise()
@@ -347,7 +346,8 @@ func Get_results(seed uint64) loadout {
 
 	// var rInt, gInt, bInt, _ = colorconv.HSVToRGB(rng.Randf(), rng.Randf(), float64(1.0)) // im fairly certain this is not accurate in the slightest
 	// var r, g, b = float32(rInt) / 255, float32(gInt) / 255, float32(bInt) / 255
-	rng.Randf()
+
+	rng.Randf() // to advance state 2 times to accommodate for skipped colour calculation
 	rng.Randf()
 	var colorState = rng.Randi_range(0, 2)
 	return (loadout{char, abilityChar, abilityLevel, itemCounts, startTime, colorState, 0, 0, 0})
@@ -356,7 +356,7 @@ func Get_results(seed uint64) loadout {
 // var colorState int32
 // var r, g, b float32
 
-// helper functions
+// windowkill/godot/C helper functions
 
 func pinch(v float64) float64 { // function run() uses
 	if v < 0.5 {
@@ -365,7 +365,7 @@ func pinch(v float64) float64 { // function run() uses
 	return v * v
 }
 
-func run(x, a, b, c float64) float64 { // TorCurve.run() in godot
+func run(x, a, b, c float64) float64 { // TorCurve.run() in windowkill
 	c = pinch(c)
 	x = math.Max(0, math.Min(1, x))
 
@@ -396,7 +396,7 @@ func run(x, a, b, c float64) float64 { // TorCurve.run() in godot
 	return res
 }
 
-func smoothCorner(x, m, l, s float64) float64 { // TorCurve.smoothCorner in godot
+func smoothCorner(x, m, l, s float64) float64 { // TorCurve.smoothCorner in windowkill
 	s1 := math.Pow(s/10.0, 2.0)
 	return 0.5 * ((l*x + m*(1.0+s1)) - math.Sqrt(math.Pow(math.Abs(l*x-m*(1.0-s1)), 2.0)+4.0*m*m*s1))
 }
@@ -414,16 +414,7 @@ func clamp(m_a, m_min, m_max float64) float64 {
 	return m_a
 }
 
-func (rng2 RandomNumberGenerator) shuffle(arr []upgrade) {
-	n := len(arr)
-	if n <= 1 {
-		return
-	}
-	for i := n - 1; i > 0; i-- {
-		j := rng2.randbound(uint32(i + 1))
-		arr[i], arr[j] = arr[j], arr[i]
-	}
-}
+// other helper functions
 
 func getCombination(characterSet []string, index int) string {
 	var base = len(characterSet)
@@ -436,6 +427,17 @@ func getCombination(characterSet []string, index int) string {
 }
 
 func (rng2 RandomNumberGenerator) shuffleString(arr []string) {
+	n := len(arr)
+	if n <= 1 {
+		return
+	}
+	for i := n - 1; i > 0; i-- {
+		j := rng2.randbound(uint32(i + 1))
+		arr[i], arr[j] = arr[j], arr[i]
+	}
+}
+
+func (rng2 RandomNumberGenerator) shuffle(arr []upgrade) {
 	n := len(arr)
 	if n <= 1 {
 		return
