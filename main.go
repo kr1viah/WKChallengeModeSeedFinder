@@ -238,18 +238,18 @@ func Get_bosses(seed uint64) []string {
 	var germsSpawned = 0
 	for i := 0; i < 10; i++ {
 		var addQueue = []string{
-			"BossSpike", "BossSnake", "BossSlime",
-			"BossSpike", "BossSnake", "BossSlime", "BossVirus",
+			"Spiker", "Wyrm", "Slimest",
+			"Spiker", "Wyrm", "Slimest", "Smiley",
 		}
 		var test = rng.Globalrandf()
 		if test < 0.33 {
-			addQueue = append(addQueue, "BossOrb")
+			addQueue = append(addQueue, "OrbArray")
 		}
 		germBuildup += 0.5 * float64(len(addQueue))
 		if germBuildup > 5.0*(1.0+1.0*float64(germsSpawned)) {
 			germBuildup = rng.Globalrandf_range(-2.0, 2.0)
 			germsSpawned++
-			addQueue = append(addQueue, "BossGermSource")
+			addQueue = append(addQueue, "MiasmaTriangle")
 		}
 		rng.shuffleString(addQueue)
 		bossQueue = append(bossQueue, addQueue...)
@@ -426,24 +426,24 @@ func getCombination(characterSet []string, index int) string {
 	return combination
 }
 
-func (rng2 RandomNumberGenerator) shuffleString(arr []string) {
+func (rng *RandomNumberGenerator) shuffleString(arr []string) {
 	n := len(arr)
 	if n <= 1 {
 		return
 	}
 	for i := n - 1; i > 0; i-- {
-		j := rng2.randbound(uint32(i + 1))
+		j := rng.randbound(uint32(i + 1))
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 }
 
-func (rng2 RandomNumberGenerator) shuffle(arr []upgrade) {
+func (rng *RandomNumberGenerator) shuffle(arr []upgrade) {
 	n := len(arr)
 	if n <= 1 {
 		return
 	}
 	for i := n - 1; i > 0; i-- {
-		j := rng2.randbound(uint32(i + 1))
+		j := rng.randbound(uint32(i + 1))
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 }
