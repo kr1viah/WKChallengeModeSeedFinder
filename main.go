@@ -155,6 +155,7 @@ func powInt64(base, exp int64) int64 {
 }
 
 func greedySearch(target uint32) string {
+	rand.Seed(2)
 	var foundOne = false
 	var T []byte
 	for i := 0; i < 1000; /* will always finish in a maximum of 1000 tries, given rand.Seed(2) */ i++ {
