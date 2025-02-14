@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/dim13/djb2"
 )
+
+const allowed = "abcdefghijklmnopqrstuvwxyz"
 
 const Math_TAU = 6.2831853071795864769252867666
 
@@ -41,13 +43,6 @@ var itemCosts = map[upgrade]float64{
 
 var charList = [6]Char{basic, mage, laser, melee, pointer, swarm}
 
-var seenSeeds = make([]bool, 4294967296)
-
-var characterSet = []string{
-	"0", "1", "2", "2", "3", "4", "5", "6", "7", "8", "9",
-	"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
-} // can remove any of these, windowkill will not accept capital letters or any others not from these
-
 const (
 	basic Char = iota
 	mage
@@ -70,82 +65,59 @@ const (
 
 var shouldStop = false
 
-func bruteForce(id int, wg *sync.WaitGroup, prefix string) {
-	if shouldStop {
-		return
-	}
-	if seedsChecked > seedsToCheck {
-		shouldStop = true
-		return
-	}
-	seed := djb2.SumString(prefix)
-	seedsChecked++
-	if seenSeeds[seed] {
-		return
-	}
-	seenSeeds[seed] = true
-	var loadout = Get_results(uint64(seed))
-	if loadout.char == swarm && loadout.itemCounts[multiShot] == 26 { // && int(loadout.startTime)%120 >= 119
-		var foundSuitableSeed = false
-		var bossOrder = Get_bosses(uint64(seed))
-		if bossOrder[1] == "BossSnake" && bossOrder[0] == "BossSnake" {
-			foundSuitableSeed = true
+func bruteForce(id int) {
+	for i := id; i < 4294967296; i = i + threads {
+		if shouldStop {
+			return
 		}
-		if foundSuitableSeed {
+		var loadout = Get_results(uint64(i))
+		if loadout.itemCounts[0]+
+			loadout.itemCounts[1]+
+			loadout.itemCounts[2]+
+			loadout.itemCounts[3]+
+			loadout.itemCounts[4]+
+			loadout.itemCounts[5]+
+			loadout.itemCounts[6]+
+			loadout.itemCounts[7] <= 2 {
 
 			shouldStop = true
-			winningSeed = prefix
+			didFindSeed = true
+			winningHash = uint64(i)
+
 		}
-	}
-	if len(prefix) == 14 {
-		return
-	}
-	for _, char := range characterSet {
-		bruteForce(id, wg, prefix+char)
 	}
 }
 
-var winningSeed string = ""
+const threads = 12
 
-var seedsChecked = 0
-var seedsToCheck = 10294997296
-var threads = 12
-var prefix = ""
+var winningHash uint64
+var didFindSeed bool = false
 
 func main() {
-
+	fmt.Println("Running")
 	var wg = sync.WaitGroup{}
 	wg.Add(threads)
 
 	var start = time.Now()
 
 	for t := 0; t < threads; t++ {
-		if threads > len(characterSet) {
-			go func() {
-				bruteForce(t, &wg, prefix+getCombination(characterSet, t))
-				wg.Done()
-			}()
-			continue
-		}
 		go func() {
-			bruteForce(t, &wg, prefix+characterSet[t])
+			bruteForce(t)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
-	if winningSeed != prefix {
-		fmt.Println("Average runtime:", time.Since(start)/time.Duration(seedsChecked))
+	if didFindSeed {
+		fmt.Println("Average time per seed:", time.Since(start)/time.Duration(winningHash))
 		fmt.Println("Runtime:", time.Since(start))
-		fmt.Println("Seeds checked:", seedsChecked)
-		Print_results(winningSeed)
-		fmt.Println("Boss order:", Get_bosses(uint64(djb2.SumString(winningSeed))))
+		fmt.Println("Corresponding hash:", winningHash)
+		Print_results(winningHash)
+		fmt.Println("Boss order:", Get_bosses(uint64(winningHash)))
 	} else {
-		fmt.Println("Seed not found!")
+		fmt.Println("Seed doesn't exist!")
 	}
 
-	// Print_results(Get_results(uint64(3823837572363)))
 	/* 	test seed:
-
 	   	seed: 3823837572363
 	   	char: laser (2)
 	   	abilityChar: mage (1)
@@ -157,9 +129,106 @@ func main() {
 	*/
 }
 
-func Print_results(seed string) {
-	fmt.Println("Seed: ", seed)
-	loadout := Get_results(uint64(djb2.SumString(seed)))
+func djb2(s string) uint32 {
+	var h uint32 = 5381
+	for i := 0; i < len(s); i++ {
+		h = h*33 + uint32(s[i])
+	}
+	return h
+}
+
+func clampInt64(x, min, max int64) int64 {
+	if x < min {
+		return min
+	} else if x > max {
+		return max
+	}
+	return x
+}
+
+func powInt64(base, exp int64) int64 {
+	result := int64(1)
+	for i := int64(0); i < exp; i++ {
+		result *= base
+	}
+	return result
+}
+
+func greedySearch(target uint32) string {
+	var foundOne = false
+	var T []byte
+	for i := 0; i < 1000; /* will always finish in a maximum of 1000 tries, given rand.Seed(2) */ i++ {
+		fixedPrefix := []byte("abcd")
+		fixedPrefix[0] = allowed[rand.Intn(len(allowed))]
+		fixedPrefix[1] = allowed[rand.Intn(len(allowed))]
+		fixedPrefix[2] = allowed[rand.Intn(len(allowed))]
+		fixedPrefix[3] = allowed[rand.Intn(len(allowed))]
+
+		T = []byte(string(fixedPrefix) + "iiiiiiii")
+		H0 := djb2(string(T))
+
+		// Compute delta = (target - H0) mod 2^32, represented as a signed 64-bit integer in [–2^31, 2^31).
+		var delta int64
+		diff := int64(target) - int64(H0)
+		mod := int64(1) << 32
+		if diff < -int64(1<<31) {
+			diff += mod
+		} else if diff >= int64(1<<31) {
+			diff -= mod
+		}
+		delta = diff
+
+		// Precompute weights: weight[i] = 33^(L-1-i).
+		weights := make([]int64, 8) // Only last 8 positions are adjusted
+		for i := 0; i < 8; i++ {
+			weights[i] = powInt64(33, int64(7-i))
+		}
+
+		var baseIndex int64 = 8
+
+		// Range of adjustments allowed
+		minAdj := -baseIndex
+		maxAdj := int64(len(allowed)-1) - baseIndex
+
+		// Compute adjustments
+		remaining := delta
+		for i := 0; i < 8; i++ {
+			w := weights[i]
+			desired := int64(math.Round(float64(remaining) / float64(w)))
+			adj := clampInt64(desired, minAdj, maxAdj)
+
+			// Apply adjustment to character
+			newIndex := baseIndex + adj
+			if newIndex < 0 || newIndex >= int64(len(allowed)) {
+				log.Fatalf("Digit out of range at position %d: newIndex = %d", i, newIndex)
+			}
+			T[4+i] = allowed[newIndex]
+
+			remaining -= adj * w
+		}
+		if remaining != 0 { // If djb2(T) = target this should return false
+			continue
+		}
+		foundOne = true
+		break
+	}
+	if !foundOne { // should never happen, but just in case
+		log.Fatalf("Something went horribly wrong. Target: %d", target)
+	}
+
+	candidate := string(T)
+	if djb2(candidate) != target { // should also never happen, but just in case
+		log.Fatalf("Something went wrong. Target: %d", target)
+	}
+	return candidate
+}
+
+func Print_results(seed uint64) {
+	var stringSeed string = greedySearch(uint32(seed))
+
+	fmt.Println("Seed:", stringSeed)
+
+	loadout := Get_results(seed)
 	switch loadout.char {
 	case basic:
 		fmt.Println("Character: epsilon")
@@ -415,16 +484,6 @@ func clamp(m_a, m_min, m_max float64) float64 {
 }
 
 // other helper functions
-
-func getCombination(characterSet []string, index int) string {
-	var base = len(characterSet)
-	var combination = ""
-	for index > 0 {
-		combination = characterSet[index%base] + combination
-		index /= base
-	}
-	return combination
-}
 
 func (rng *RandomNumberGenerator) shuffleString(arr []string) {
 	n := len(arr)
