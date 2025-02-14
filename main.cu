@@ -1,7 +1,6 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <vector>
-#include <atomic>
 
 #define PCG_DEFAULT_INC_64 1442695040888963407ULL
 #define Math_TAU 6.2831853071795864769252867666
@@ -29,7 +28,7 @@ typedef struct {
 
 // helper functions
 
-__device__
+__forceinline__ __device__
 double clamp(double m_a, double m_min, double m_max) {
 	if (m_a < m_min) {
 		return m_min;
@@ -39,6 +38,7 @@ double clamp(double m_a, double m_min, double m_max) {
 	return m_a;
 }
 
+__forceinline__ __device__
 __device__ float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
@@ -55,14 +55,13 @@ __device__ void intToChar(uint32_t num, char* str, int maxLength) {
     }
 }
 
+__forceinline__ __device__
 __device__ double pinch(double v) { // function run() uses
 	if (v < 0.5) {
 		return -v * v;
 	}
 	return v * v;
 }
-
-// could be: pinch(), 
 
 __device__ double run(double x, double a, double b, double c) { // TorCurve.run() in windowkill
 	c = pinch(c);
@@ -93,7 +92,8 @@ __device__ double run(double x, double a, double b, double c) { // TorCurve.run(
 
 	return res;
 }
-__device__
+
+__forceinline__ __device__
 double smoothCorner(double x, double m, double l, double s) { // TorCurve.smoothCorner in windowkill
 	double s1 = pow(s/10.0, 2.0);
 	return 0.5 * ((l*x + m*(1.0+s1)) - sqrt(pow(abs(l*x-m*(1.0-s1)), 2.0)+4.0*m*m*s1));
@@ -289,33 +289,12 @@ loadout get_results(uint64_t seed) {
     RandomNumberGenerator rng;
     RandomNumberGenerator globalRng;
 
-    double itemCosts[8];
-    itemCosts[0] = 1.0; // speed
-    itemCosts[1] = 2.8; // fireRate
-    itemCosts[2] = 3.3; // multiShot
-    itemCosts[3] = 1.25; // wallPunch
-    itemCosts[4] = 2.0; // splashDamage
-    itemCosts[5] = 2.4; // piercing
-    itemCosts[6] = 1.5; // freezing
-    itemCosts[7] = 2.15; // infection
 
-    int itemCategories[8];
-    itemCategories[0] = 0; // speed
-    itemCategories[1] = 1; // fireRate
-    itemCategories[2] = 2; // multiShot
-    itemCategories[3] = 3; // wallPunch
-    itemCategories[4] = 4; // splashDamage
-    itemCategories[5] = 5; // piercing
-    itemCategories[6] = 6; // freezing
-    itemCategories[7] = 7; // infection
-
-    int charList[6];
-    charList[0] = 0; // basic
-    charList[1] = 1; // mage
-    charList[2] = 2; // laser
-    charList[3] = 3; // melee
-    charList[4] = 4; // pointer
-    charList[5] = 5; // swarm
+//                                 speed fireRate multiShot wallPunch splashDamage piercing freezing infection
+    int itemCategories[8] = {      0,    1,       2,        3,        4,           5,       6,       7        };
+    float itemCosts[8] = {         1.0f, 2.8f,    3.3f,     1.25f,    2.0f,        2.4f,    1.5f,    2.15f    };
+    //                 basic mage laser melee pointer swarm
+    int charList[6] = {0,    1,   2,    3,    4,      5};
 
     int itemCounts[8];
 
@@ -414,36 +393,6 @@ loadout get_results(uint64_t seed) {
     int colorState = rng.randi_range(0, 2);
     return loadout{character, abilityChar, abilityLevel, {itemCounts[0], itemCounts[1], itemCounts[2], itemCounts[3], itemCounts[4], itemCounts[5], itemCounts[6], itemCounts[7]}, startTime, colorState};
 }
-
-__device__ const char characterSet[36] = {
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 
-    'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 
-    'w', 'x', 'y', 'z'
-};
-
-__device__ void generateCharacterSequence(int index, char* result) {
-    const int base = 36;
-    int pos = 0;
-    char temp[64]; // Temporary storage for reversed characters
-
-    // Convert index to base-36 representation
-    while (index > 0) {
-        temp[pos++] = characterSet[(index - 1) % base]; // Map to character set (1-based index)
-        index = (index - 1) / base; // Move to the next digit
-    }
-    
-    // Reverse the characters into the result array
-    for (int i = 0; i < pos; ++i) {
-        result[i] = temp[pos - i - 1];
-    }
-    for (int i = pos; i < 14; ++i) {
-        result[i] = '0';
-    }
-
-    result[14] = '\0'; // Null-terminate the result
-}
-
 __device__ uint32_t djb2Hash(const char *str) {
     unsigned long hash = 5381;
     int c;
@@ -457,43 +406,49 @@ __device__ uint32_t djb2Hash(const char *str) {
 __device__ bool shouldStop = false;
 
 __device__
-void giveResults(loadout loadout, int seedsProcessed) {
-
-}
+uint32_t hash = 0;
 
 __global__
 void bruteForce(float clockRateKHz) {
-    uint64_t start = clock64();
     int totalThreads = blockDim.x * gridDim.x;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    char result[14]; // Local buffer for the result
-    int i = 0;
-    for (;;i++) {
-        generateCharacterSequence(idx + totalThreads * i + 1, result);
-        uint32_t hash = djb2Hash(result);
-        loadout loadout = get_results(hash);
-        if (loadout.itemCounts[2] > 25 && loadout.itemCounts[0] > 25 && loadout.itemCounts[1] > 25) {
+    int64_t i = idx;
+    loadout loadout = get_results(0);
+    for (;i < 4294967296;i = i + totalThreads) {
+        loadout = get_results(i);
+		if (loadout.itemCounts[0]+
+			loadout.itemCounts[1]+
+			loadout.itemCounts[2]+
+			loadout.itemCounts[3]+
+			loadout.itemCounts[4]+
+			loadout.itemCounts[5]+
+			loadout.itemCounts[6]+
+			loadout.itemCounts[7] <= 2) {
             shouldStop = true;
-
-            uint64_t end = clock64();
-            uint64_t elapsed = end - start;
-            double timeInSeconds = (double) (elapsed / (clockRateKHz * 1000.0f));
-            printf("Seconds passed:                              %.15f\n", timeInSeconds);
-            printf("Rough estimate for seeds checked:            %d\n", idx+totalThreads*i+1);
-            double timePerSeed = timeInSeconds/(double) (idx+totalThreads*i+1);
-            printf("Rough estimate for time per seed in seconds: %.15f\n", timePerSeed);
-            printf("Seed:                                        %s\n", result);
-            printf("Hash:                                        %ld\n", hash);
-            printf("\n");
+            hash = i;
         }
         if (shouldStop) {
-            break;
+            return;
         }
     }
 }
 
-int main() {
-    printf("running\n");
+extern "C" {
+struct Result {
+    bool didFindSeed;
+    uint64_t winningHash;
+};
+
+__declspec(dllexport) Result startBruteForce() {
+    cudaEvent_t start, stop;
+    float elapsedTimeMs;
+
+    // Create events
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    // Record the start event
+    cudaEventRecord(start, 0);
     int device;
 
     // Get the current device
@@ -508,9 +463,23 @@ int main() {
 
     bruteForce<<<1024,256>>>(clockRate);
     
-    cudaDeviceSynchronize();
+    cudaEventRecord(stop, 0);
 
-    // printf("%d %f %d %d %f %f", winningLoadout.abilityCharacter, winningLoadout.abilityLevel, winningLoadout.character, winningLoadout.colorState, winningLoadout.intensity,winningLoadout.startTime);
+    cudaEventSynchronize(stop);
 
-    return 0;
+    // Calculate elapsed time
+    cudaEventElapsedTime(&elapsedTimeMs, start, stop);
+    uint32_t h_hash;
+    bool h_didFindSeed;
+
+    // Copy winning hash to host memory
+    cudaMemcpyFromSymbol(&h_hash, hash, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
+    cudaMemcpyFromSymbol(&h_didFindSeed, shouldStop, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
+
+    // Cleanup
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    return {h_didFindSeed, h_hash};
+}
 }
