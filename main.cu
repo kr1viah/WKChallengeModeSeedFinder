@@ -55,7 +55,7 @@ __device__ void intToChar(uint32_t num, char* str, int maxLength) {
     }
 }
 
-__forceinline__ __device__
+__forceinline__
 __device__ double pinch(double v) { // function run() uses
 	if (v < 0.5) {
 		return -v * v;
@@ -100,194 +100,130 @@ double smoothCorner(double x, double m, double l, double s) { // TorCurve.smooth
 }
 // end of helper functions
 
-// random number generator (pcg32)
+// RandomNumberGenerator
 
-__device__
-uint32_t pcg32_random_r(pcg32_random_t* rng);
-__device__
-void pcg32_srandom_r(pcg32_random_t* rng, uint64_t initstate, uint64_t initseq);
-__device__
-uint32_t pcg32_boundedrand_r(pcg32_random_t* rng, uint32_t bound);
+typedef struct {
+    uint64_t state;
+    uint64_t inc;
+    uint64_t p_inc;
+    uint64_t p_seed;
+    uint64_t current_seed;
+} RandomNumberGenerator;
 
-class RandomPCG {
-	pcg32_random_t pcg;
-	uint64_t current_seed = 0; // The seed the current generator state started from.
-	uint64_t current_inc = 0;
-
-public:
-	static const uint64_t DEFAULT_SEED = 12047754176567800795U;
-	static const uint64_t DEFAULT_INC = PCG_DEFAULT_INC_64;
-
-    __device__
-	RandomPCG(uint64_t p_seed = DEFAULT_SEED, uint64_t p_inc = DEFAULT_INC);
-
-    __device__
-	void seed(uint64_t p_seed) {
-		current_seed = p_seed;
-		pcg32_srandom_r(&pcg, current_seed, current_inc);
-	}
-    __device__
-	uint64_t get_seed() { return current_seed; }
-
-    __device__
-	void set_state(uint64_t p_state) { pcg.state = p_state; }
-    __device__
-	uint64_t get_state() const { return pcg.state; }
-
-    __device__
-	uint32_t rand() {
-		return pcg32_random_r(&pcg);
-	}
-    __device__
-	uint32_t randbound(uint32_t bounds) {
-		return pcg32_boundedrand_r(&pcg, bounds);
-	}
-
-    __device__
-	double randd() {
-		uint32_t proto_exp_offset = rand();
-		if (proto_exp_offset == 0) {
-			return 0;
-		}
-		uint64_t significand = (((uint64_t)rand()) << 32) | rand() | 0x8000000000000001U;
-		return ldexp((double)significand, -64 - __clzll(proto_exp_offset));
-	}
-    __device__
-	double randf() {
-		uint32_t proto_exp_offset = rand();
-		if (proto_exp_offset == 0) {
-			return 0;
-		}
-		return (double) (float) (ldexp((double)(rand() | 0x80000001), -32 - __clz(proto_exp_offset)));
-	}
-
-    __device__
-    double randfn(double p_mean, double p_deviation) {
-        double temp = randf();
-        if (temp < 0.00001) {
-        temp += 0.00001;
-    }
-        return p_mean + p_deviation * (cos(6.2831853071795864769252867666 * static_cast<double>(randf())) * sqrt(-2.0 * log(static_cast<double>(temp))));
-    }
-
-    __device__
-	double randomDouble(double p_from, double p_to);
-    __device__
-	double randomFloat(float p_from, float p_to);
-    __device__
-	int randomInteger(int p_from, int p_to);
+__device__ void Initialise(RandomNumberGenerator* rng) {
+	rng->p_inc = 1442695040888963407;
+	rng->p_seed = 12047754176567800795;
+	rng->current_seed = 0;
 };
 
-__device__
-RandomPCG::RandomPCG(uint64_t p_seed, uint64_t p_inc) :
-		pcg(),
-		current_inc(p_inc) {
-	seed(p_seed);
-}
-
-__device__
-double RandomPCG::randomDouble(double p_from, double p_to) {
-	return randd() * (p_to - p_from) + p_from;
-}
-
-__device__
-double RandomPCG::randomFloat(float p_from, float p_to) {
-	return (double) (randf()*(p_to - p_from) + p_from);
-}
-
-__device__
-int RandomPCG::randomInteger(int p_from, int p_to) {
-	if (p_from == p_to) {
-		return p_from;
-	}
-	return randbound(abs(p_from - p_to) + 1) + min(p_from, p_to);
-}
-
-__device__
-uint32_t pcg32_random_r(pcg32_random_t* rng)
-{
+__device__ uint32_t Randi(RandomNumberGenerator* rng) {
     uint64_t oldstate = rng->state;
-    
-    rng->state = oldstate * 6364136223846793005ULL + (rng->inc|1);
-    
-    uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-    uint32_t rot = oldstate >> 59u;
+    // printf("ab %llu\n", oldstate);
+    rng->state = oldstate * 6364136223846793005UL + (rng->inc | 1UL);
+    // printf("cd %llu\n", rng->state);
+    uint16_t xorshifted = (uint16_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
+    // printf("ef %u\n", xorshifted);
+    uint16_t rot = (uint16_t)(oldstate >> 59u);
+    // printf("gh %u\n", rot);
+    // printf("ij %u\n\n", (xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
     return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
 }
 
-__device__
-void pcg32_srandom_r(pcg32_random_t* rng, uint64_t initstate, uint64_t initseq)
-{
-    rng->state = 0U;
-    rng->inc = (initseq << 1u) | 1u;
-    pcg32_random_r(rng);
-    rng->state += initstate;
-    pcg32_random_r(rng);
-}
-
-__device__
-uint32_t pcg32_boundedrand_r(pcg32_random_t *rng, uint32_t bound) {
+__device__ uint32_t randbound(RandomNumberGenerator* rng, uint32_t bound) {
 	uint32_t threshold = -bound % bound;
 
 	for (;;) {
-		uint32_t r = pcg32_random_r(rng);
+		uint32_t r = Randi(rng);
 		if (r >= threshold)
 			return r % bound;
 	}
 }
 
-class RandomNumberGenerator {
-protected:
-	RandomPCG randbase;
-public:
-    __device__
-	void set_seed(uint64_t p_seed) { randbase.seed(p_seed); }
-    __device__
-	uint64_t get_seed() { return randbase.get_seed(); }
-
-    __device__
-	void set_state(uint64_t p_state) { randbase.set_state(p_state); }
-    __device__
-	uint64_t get_state() const { return randbase.get_state(); }
-
-    __device__
-	uint32_t randbound(uint32_t bounds) {
-		return randbase.randbound(bounds);
+__device__ double randf32(RandomNumberGenerator* rng) {
+	uint32_t proto_exp_offset = Randi(rng);
+	if (proto_exp_offset == 0) {
+		return 0;
 	}
-    __device__
-	uint32_t randi() { return randbase.rand(); }
-    __device__
-	double randf() { return randbase.randf(); }
-    __device__
-	double randf_range(float p_from, float p_to) {
-        return randbase.randomFloat(p_from, p_to);
+	return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clzll(proto_exp_offset)));
+}
+
+__device__ double randf64(RandomNumberGenerator* rng) {
+	uint32_t proto_exp_offset = Randi(rng);
+	if (proto_exp_offset == 0) {
+		return 0;
+	}
+	uint64_t significand = (((uint64_t)Randi(rng)) << 32) | Randi(rng) | 0x8000000000000001U;
+	return ldexp((double)significand, -64 - __clz(proto_exp_offset));
+}
+
+__device__ void Set_seed(RandomNumberGenerator* rng, uint64_t p_seed) {
+	rng->current_seed = p_seed;
+    rng->state = 0U;
+    rng->inc = (rng->p_inc << 1u) | 1u;
+    Randi(rng);
+    rng->state += rng->current_seed;
+    Randi(rng);
+}
+
+__device__ uint64_t Get_seed(RandomNumberGenerator* rng) { return rng->current_seed; }
+__device__ void     Set_state(RandomNumberGenerator* rng, uint64_t p_state) { rng->state = p_state; }
+__device__ uint64_t Get_state(RandomNumberGenerator* rng) { return rng->state; }
+
+__device__ double Randf(RandomNumberGenerator* rng) {
+	uint32_t proto_exp_offset = Randi(rng);
+	if (proto_exp_offset == 0) {
+		return 0;
+	}
+	return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset))); 
+}
+
+__device__ double Randf_range(RandomNumberGenerator* rng, float p_from, float p_to) {
+    float temp = randf32(rng);
+    // printf("%.15f\n", temp);
+    return (double)(temp*(p_to-p_from)+p_from);
+}
+
+__device__ double Randfn(RandomNumberGenerator* rng, float p_mean, float p_deviation) {
+    double temp = randf32(rng);
+    if (temp < 0.00001) {
+        temp += 0.00001;
     }
-    __device__
-	double randfn(float p_mean = 0.0, float p_deviation = 1.0) { return randbase.randfn(p_mean, p_deviation); }
-    __device__
-	int randi_range(int p_from, int p_to) { return randbase.randomInteger(p_from, p_to); }
-    __device__
-    void shuffle(int *arr, int n) {
-        if (n <= 1) return;
+    return p_mean + p_deviation * (cos(6.2831853071795864769252867666 * (double)(randf32(rng))) * sqrt(-2.0 * log((double)(temp))));
+}
 
-        for (int i = n - 1; i > 0; i--) {
-            int j = randbase.randbound(i + 1);
-            
-            int temp = arr[i];
-            arr[i] = arr[j];
-            arr[j] = temp;
-        }
+__device__ int Randi_range(RandomNumberGenerator* rng, int p_from, int p_to) {
+	if (p_from == p_to) {
+		return p_from;
+	}
+    uint32_t bounds = (uint16_t)((int)(fabs((double)(p_from-p_to)))+1);
+    int randomValue = (int)(randbound(rng, bounds));
+    if (p_from < p_to) {
+        return p_from+randomValue;
     }
-};
+    return p_to+randomValue;
+}
 
-// end of random number generator
+// RandomNumberGenerator
 
+__device__ void Shuffle(RandomNumberGenerator* rng, int *arr) {
+    // if (n <= 1) // assumes n = 8
+        // return;
+    for (uint16_t i = 7; i > 0; i--) {
+        uint16_t r = randbound(rng, i+1);
+        uint16_t j = r % (i + 1);
+        int tmp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = tmp;
+    }
+}
 // seed function
 
 __device__
 loadout get_results(uint64_t seed) {
     RandomNumberGenerator rng;
     RandomNumberGenerator globalRng;
+    Initialise(&rng);
+    Initialise(&globalRng);
 
 
 //                                 speed fireRate multiShot wallPunch splashDamage piercing freezing infection
@@ -298,26 +234,26 @@ loadout get_results(uint64_t seed) {
 
     int itemCounts[8];
 
-    rng.set_seed(seed);
-    double intensity = rng.randf_range(0.20f, 1.0f);
+    Set_seed(&rng, seed);
+    double intensity = Randf_range(&rng, 0.20f, 1.0f);
 
-    int character = charList[rng.randi() % 6];
-    int abilityChar = charList[rng.randi() % 6];
-    double abilityLevel = 1.0 + round(run(rng.randf(), 1.5/(1.0+intensity),1.0,0.0)*6);
+    int character = charList[Randi(&rng) % 6];
+    int abilityChar = charList[Randi(&rng) % 6];
+    double abilityLevel = 1.0 + round(run(Randf(&rng), 1.5/(1.0+intensity),1.0,0.0)*6);
 
     double itemCount = 8.0;
 
 
-    double points = 0.66 * itemCount * rng.randf_range(0.5, 1.5) * (1.0 + 4.0*pow(intensity, 1.5));
+    double points = 0.66 * itemCount * Randf_range(&rng, 0.5, 1.5) * (1.0 + 4.0*pow(intensity, 1.5));
 
-    double itemDistSteepness = rng.randf_range(-0.5, 2.0);
+    double itemDistSteepness = Randf_range(&rng, -0.5, 2.0);
     
     double itemDistArea = 1.0 / (1.0 + pow(2.0, 0.98*itemDistSteepness));
 
-    globalRng.set_seed(rng.get_seed());
-    globalRng.shuffle(itemCategories, 8);
+    Set_seed(&globalRng, Get_seed(&rng));
+    Shuffle(&globalRng, itemCategories);
     
-    if (rng.randf() < intensity) {
+    if (Randf(&rng) < intensity) {
         int multishotIdx = -1;
         for (int i = 0; i < itemCount; ++i) {
             if (itemCategories[i] == 2) {
@@ -334,14 +270,14 @@ loadout get_results(uint64_t seed) {
         }
 
         // Insert multiShot at a new index
-        int insertIdx = itemCount - 1 - rng.randi_range(0, 2);
+        int insertIdx = itemCount - 1 - Randi_range(&rng, 0, 2);
         for (int i = itemCount; i > insertIdx; --i) {
             itemCategories[i] = itemCategories[i - 1];
         }
         itemCategories[insertIdx] = 2;
     }
 
-    if (rng.randf() < intensity) {
+    if (Randf(&rng) < intensity) {
         int fireRateIdx = -1;
         for (int i = 0; i < itemCount; ++i) {
             if (itemCategories[i] == 1) {
@@ -358,7 +294,7 @@ loadout get_results(uint64_t seed) {
         }
 
         // Insert firerate at a new index
-        int insertIdx = itemCount - 1 - rng.randi_range(0, 2);
+        int insertIdx = itemCount - 1 - Randi_range(&rng, 0, 2);
         for (int i = itemCount; i > insertIdx; --i) {
             itemCategories[i] = itemCategories[i - 1];
         }
@@ -376,21 +312,21 @@ loadout get_results(uint64_t seed) {
 
         double special = 0.0;
         if (i == 7) {
-            special += 4.0 * rng.randf_range(0.0, pow(intensity, 2.0));
+            special += 4.0 * Randf_range(&rng, 0.0, pow(intensity, 2.0));
         }
-        double amount = fmax(0.0, 3.0 * run(catT, itemDistSteepness, 1.0, 0.0) + 3.0 * clamp(rng.randfn(0.0, 0.15), -0.5, 0.5));
+        double amount = fmax(0.0, 3.0 * run(catT, itemDistSteepness, 1.0, 0.0) + 3.0 * clamp(Randfn(&rng, 0.0, 0.15), -0.5, 0.5));
         
         itemCounts[item] = (int) clamp(round(baseAmount+amount*((points/cost)/(1.0+5.0*itemDistArea))+special), 0.0, 26.0);
     }
 
     intensity = -0.05 + intensity*lerp(0.33, 1.2, smoothCorner(((double) itemCounts[2]*1.8+(double) itemCounts[1])/12.0, 1.0, 1.0, 4.0)); // TODO: smoothCorner()
 
-    double finalT = rng.randfn((float) pow(intensity, 1.2), 0.05);
+    double finalT = Randfn(&rng, (float) pow(intensity, 1.2), 0.05);
     double startTime = clamp(lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0);
 
-    rng.randf();
-    rng.randf();
-    int colorState = rng.randi_range(0, 2);
+    Randf(&rng);
+    Randf(&rng);
+    int colorState = Randi_range(&rng, 0, 2);
     return loadout{character, abilityChar, abilityLevel, {itemCounts[0], itemCounts[1], itemCounts[2], itemCounts[3], itemCounts[4], itemCounts[5], itemCounts[6], itemCounts[7]}, startTime, colorState};
 }
 __device__ uint32_t djb2Hash(const char *str) {
@@ -409,7 +345,7 @@ __device__
 uint32_t hash = 0;
 
 __global__
-void bruteForce(float clockRateKHz) {
+void bruteForce() {
     int totalThreads = blockDim.x * gridDim.x;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int64_t i = idx;
@@ -435,52 +371,16 @@ void bruteForce(float clockRateKHz) {
 }
 
 extern "C" {
-struct Result {
-    bool didFindSeed;
-    uint64_t winningHash;
-};
+__declspec(dllexport) unsigned int startBruteForce() {
 
-__declspec(dllexport) Result startBruteForce() {
-    cudaEvent_t start, stop;
-    float elapsedTimeMs;
+    bruteForce<<<1024,256>>>();
 
-    // Create events
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    // Record the start event
-    cudaEventRecord(start, 0);
-    int device;
-
-    // Get the current device
-    cudaGetDevice(&device);
-
-    // Get the clock rate (in kHz)
-    int clockRateKHz;
-    cudaDeviceGetAttribute(&clockRateKHz, cudaDevAttrClockRate, device);
-
-    // Convert to kHz for kernel use
-    float clockRate = (float)clockRateKHz;
-
-    bruteForce<<<1024,256>>>(clockRate);
-    
-    cudaEventRecord(stop, 0);
-
-    cudaEventSynchronize(stop);
-
-    // Calculate elapsed time
-    cudaEventElapsedTime(&elapsedTimeMs, start, stop);
     uint32_t h_hash;
-    bool h_didFindSeed;
 
     // Copy winning hash to host memory
     cudaMemcpyFromSymbol(&h_hash, hash, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
-    cudaMemcpyFromSymbol(&h_didFindSeed, shouldStop, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
 
-    // Cleanup
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-
-    return {h_didFindSeed, h_hash};
+    return h_hash;
 }
+
 }

@@ -3,12 +3,7 @@ package main
 /*
 #cgo LDFLAGS: -lmain -L${SRCDIR}/ -lm
 
-typedef struct {
-    int didFindSeed;
-    unsigned long long winningHash;
-} Result;
-
-extern Result startBruteForce();
+extern unsigned int startBruteForce();
 */
 import "C"
 import (
@@ -80,7 +75,7 @@ func main() {
 	result := C.startBruteForce()
 
 	// didFindSeed := int(result.didFindSeed)
-	winningHash := uint64(result.winningHash)
+	winningHash := uint64(result)
 	if winningHash != 0 {
 		fmt.Println("Average time per seed:", time.Since(start)/time.Duration(winningHash))
 		fmt.Println("Runtime:", time.Since(start))
@@ -89,6 +84,8 @@ func main() {
 		fmt.Println("Boss order:", Get_bosses(uint64(winningHash)))
 	} else {
 		fmt.Println("Seed doesn't exist!")
+		fmt.Println("Average time per seed:", time.Since(start)/time.Duration(4294967296))
+		fmt.Println("Runtime:", time.Since(start))
 	}
 }
 
