@@ -84,7 +84,7 @@ func main() {
 		fmt.Println("Boss order:", Get_bosses(uint64(winningHash)))
 	} else {
 		fmt.Println("Seed doesn't exist!")
-		fmt.Println("Average time per seed:", time.Since(start)/time.Duration(4294967296))
+		// print average time per seed, devide time since by 2^32, convert to float and print ns at the end
 		fmt.Println("Runtime:", time.Since(start))
 	}
 }

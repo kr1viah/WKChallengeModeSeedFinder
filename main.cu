@@ -1,12 +1,9 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <vector>
+#include "rng.cu"
+#include "lp-rng.cu"
 
-#define PCG_DEFAULT_INC_64 1442695040888963407ULL
-#define Math_TAU 6.2831853071795864769252867666
-#define CMP_EPSILON 0.00001
-
-typedef struct { uint64_t state;  uint64_t inc; } pcg32_random_t;
 typedef struct {
     int character;
     int abilityCharacter;
@@ -15,16 +12,7 @@ typedef struct {
     double startTime;
     int32_t colorState;
     double intensity;
-    // would do rgb but cba to figure out imports/packages/whatever or to make my own colour converter
 } loadout;
-
-// __device__
-// bool seenSeeds[4294967296];
-
-// std::vector<char> characterSet = {
-//     '0', '1', '2', '2', '3', '4', '5', '6', '7', '8', '9',
-//     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-// };
 
 // helper functions
 
@@ -39,24 +27,12 @@ double clamp(double m_a, double m_min, double m_max) {
 }
 
 __forceinline__ __device__
-__device__ float lerp(float a, float b, float t) {
+float lerp(float a, float b, float t) {
     return a + t * (b - a);
 }
 
-__device__ void intToChar(uint32_t num, char* str, int maxLength) {
-    int index = 0;
-    while (num > 0 && index < maxLength - 1) {
-        int digit = num % 10;
-        str[index++] = '0' + digit;
-        num /= 10;
-    }
-    if (index < maxLength) {
-        str[index] = '\0';
-    }
-}
-
-__forceinline__
-__device__ double pinch(double v) { // function run() uses
+__forceinline__ __device__
+double pinch(double v) { // function run() uses
 	if (v < 0.5) {
 		return -v * v;
 	}
@@ -100,131 +76,13 @@ double smoothCorner(double x, double m, double l, double s) { // TorCurve.smooth
 }
 // end of helper functions
 
-// RandomNumberGenerator
-
-typedef struct {
-    uint64_t state;
-    uint64_t inc;
-    uint64_t p_inc;
-    uint64_t p_seed;
-    uint64_t current_seed;
-} RandomNumberGenerator;
-
-__device__ void Initialise(RandomNumberGenerator* rng) {
-	rng->p_inc = 1442695040888963407;
-	rng->p_seed = 12047754176567800795;
-	rng->current_seed = 0;
-};
-
-__device__ uint32_t Randi(RandomNumberGenerator* rng) {
-    uint64_t oldstate = rng->state;
-    // printf("ab %llu\n", oldstate);
-    rng->state = oldstate * 6364136223846793005UL + (rng->inc | 1UL);
-    // printf("cd %llu\n", rng->state);
-    uint16_t xorshifted = (uint16_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
-    // printf("ef %u\n", xorshifted);
-    uint16_t rot = (uint16_t)(oldstate >> 59u);
-    // printf("gh %u\n", rot);
-    // printf("ij %u\n\n", (xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
-    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-}
-
-__device__ uint32_t randbound(RandomNumberGenerator* rng, uint32_t bound) {
-	uint32_t threshold = -bound % bound;
-
-	for (;;) {
-		uint32_t r = Randi(rng);
-		if (r >= threshold)
-			return r % bound;
-	}
-}
-
-__device__ double randf32(RandomNumberGenerator* rng) {
-	uint32_t proto_exp_offset = Randi(rng);
-	if (proto_exp_offset == 0) {
-		return 0;
-	}
-	return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clzll(proto_exp_offset)));
-}
-
-__device__ double randf64(RandomNumberGenerator* rng) {
-	uint32_t proto_exp_offset = Randi(rng);
-	if (proto_exp_offset == 0) {
-		return 0;
-	}
-	uint64_t significand = (((uint64_t)Randi(rng)) << 32) | Randi(rng) | 0x8000000000000001U;
-	return ldexp((double)significand, -64 - __clz(proto_exp_offset));
-}
-
-__device__ void Set_seed(RandomNumberGenerator* rng, uint64_t p_seed) {
-	rng->current_seed = p_seed;
-    rng->state = 0U;
-    rng->inc = (rng->p_inc << 1u) | 1u;
-    Randi(rng);
-    rng->state += rng->current_seed;
-    Randi(rng);
-}
-
-__device__ uint64_t Get_seed(RandomNumberGenerator* rng) { return rng->current_seed; }
-__device__ void     Set_state(RandomNumberGenerator* rng, uint64_t p_state) { rng->state = p_state; }
-__device__ uint64_t Get_state(RandomNumberGenerator* rng) { return rng->state; }
-
-__device__ double Randf(RandomNumberGenerator* rng) {
-	uint32_t proto_exp_offset = Randi(rng);
-	if (proto_exp_offset == 0) {
-		return 0;
-	}
-	return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset))); 
-}
-
-__device__ double Randf_range(RandomNumberGenerator* rng, float p_from, float p_to) {
-    float temp = randf32(rng);
-    // printf("%.15f\n", temp);
-    return (double)(temp*(p_to-p_from)+p_from);
-}
-
-__device__ double Randfn(RandomNumberGenerator* rng, float p_mean, float p_deviation) {
-    double temp = randf32(rng);
-    if (temp < 0.00001) {
-        temp += 0.00001;
-    }
-    return p_mean + p_deviation * (cos(6.2831853071795864769252867666 * (double)(randf32(rng))) * sqrt(-2.0 * log((double)(temp))));
-}
-
-__device__ int Randi_range(RandomNumberGenerator* rng, int p_from, int p_to) {
-	if (p_from == p_to) {
-		return p_from;
-	}
-    uint32_t bounds = (uint16_t)((int)(fabs((double)(p_from-p_to)))+1);
-    int randomValue = (int)(randbound(rng, bounds));
-    if (p_from < p_to) {
-        return p_from+randomValue;
-    }
-    return p_to+randomValue;
-}
-
-// RandomNumberGenerator
-
-__device__ void Shuffle(RandomNumberGenerator* rng, int *arr) {
-    // if (n <= 1) // assumes n = 8
-        // return;
-    for (uint16_t i = 7; i > 0; i--) {
-        uint16_t r = randbound(rng, i+1);
-        uint16_t j = r % (i + 1);
-        int tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-    }
-}
 // seed function
 
 __device__
 loadout get_results(uint64_t seed) {
-    RandomNumberGenerator rng;
-    RandomNumberGenerator globalRng;
-    Initialise(&rng);
-    Initialise(&globalRng);
-
+    RandomNumberGenerator rng = Initialise();
+    RandomNumberGenerator globalRng = Initialise();
+    Set_seed(&rng, seed);
 
 //                                 speed fireRate multiShot wallPunch splashDamage piercing freezing infection
     int itemCategories[8] = {      0,    1,       2,        3,        4,           5,       6,       7        };
@@ -234,7 +92,6 @@ loadout get_results(uint64_t seed) {
 
     int itemCounts[8];
 
-    Set_seed(&rng, seed);
     double intensity = Randf_range(&rng, 0.20f, 1.0f);
 
     int character = charList[Randi(&rng) % 6];
@@ -329,17 +186,9 @@ loadout get_results(uint64_t seed) {
     int colorState = Randi_range(&rng, 0, 2);
     return loadout{character, abilityChar, abilityLevel, {itemCounts[0], itemCounts[1], itemCounts[2], itemCounts[3], itemCounts[4], itemCounts[5], itemCounts[6], itemCounts[7]}, startTime, colorState};
 }
-__device__ uint32_t djb2Hash(const char *str) {
-    unsigned long hash = 5381;
-    int c;
-    while (c = *str++) {
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-    }
 
-    return hash;
-}
-
-__device__ bool shouldStop = false;
+__device__
+bool shouldStop = false;
 
 __device__
 uint32_t hash = 0;
@@ -349,17 +198,28 @@ void bruteForce() {
     int totalThreads = blockDim.x * gridDim.x;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int64_t i = idx;
-    loadout loadout = get_results(0);
+    lp_loadout lp_loadout = lp_get_results(0);
     for (;i < 4294967296;i = i + totalThreads) {
-        loadout = get_results(i);
-		if (loadout.itemCounts[0]+
-			loadout.itemCounts[1]+
-			loadout.itemCounts[2]+
-			loadout.itemCounts[3]+
-			loadout.itemCounts[4]+
-			loadout.itemCounts[5]+
-			loadout.itemCounts[6]+
-			loadout.itemCounts[7] <= 2) {
+        lp_loadout = lp_get_results(i);
+		if (lp_loadout.itemCounts[0]+
+			lp_loadout.itemCounts[1]+
+			lp_loadout.itemCounts[2]+
+			lp_loadout.itemCounts[3]+
+			lp_loadout.itemCounts[4]+
+			lp_loadout.itemCounts[5]+
+			lp_loadout.itemCounts[6]+
+			lp_loadout.itemCounts[7] <= 6) {
+            // check high precision before continuing
+            // loadout hp_loadout = get_results(i);
+            // if (hp_loadout.itemCounts[0]+
+            //     hp_loadout.itemCounts[1]+
+            //     hp_loadout.itemCounts[2]+
+            //     hp_loadout.itemCounts[3]+
+            //     hp_loadout.itemCounts[4]+
+            //     hp_loadout.itemCounts[5]+
+            //     hp_loadout.itemCounts[6]+
+            //     hp_loadout.itemCounts[7] <= 6) {
+            // }
             shouldStop = true;
             hash = i;
             // printf("%lld\n", i);
