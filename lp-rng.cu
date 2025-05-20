@@ -1,120 +1,52 @@
-// lp = low precision
+#include "rng.cuh"
+// lp means low precision
 
-typedef struct {
-    uint64_t state;
-    uint64_t inc;
-    uint64_t p_inc;
-    uint64_t p_seed;
-    uint64_t current_seed;
-} lp_RandomNumberGenerator;
+// __device__ float lp_randf32(RandomNumberGenerator* rng) {
+// 	uint32_t proto_exp_offset = Randi(rng);
+// 	if (proto_exp_offset == 0) {
+// 		return 0;
+// 	}
+// 	return ldexp((float)(Randi(rng) | 0x80000001), -32 - __clzll(proto_exp_offset));
+// } 
+//
+// im reading godot's source code and apparently this is literally not a thing??
+// __clzll never occurs ever there (neither does clzll)
+// - kr1v 20/05/2025 16:00
+//
+// ok apparently this existed because I used it originally
+// to stay perfectly accurate with the godot version
+// still don't know why I used clzll
+// - kr1v 20/05/2025 16:38  
 
-typedef struct {
-    int character;
-    int abilityCharacter;
-    double abilityLevel;
-    int itemCounts[8];
-    double startTime;
-    int32_t colorState;
-    double intensity;
-} lp_loadout;
+// __device__ double randf64(RandomNumberGenerator* rng) {
+// 	uint32_t proto_exp_offset = Randi(rng);
+// 	if (proto_exp_offset == 0) {
+// 		return 0;
+// 	}
+// 	uint64_t significand = (((uint64_t)Randi(rng)) << 32) | Randi(rng) | 0x8000000000000001U;
+// 	return ldexp((double)significand, -64 - __clz(proto_exp_offset));
+// }
 
-__device__ lp_RandomNumberGenerator lp_Initialise() {
-    lp_RandomNumberGenerator rng = {0};
-	rng.p_inc = 1442695040888963407;
-	rng.p_seed = 12047754176567800795;
-    return rng;
-};
-
-__device__ uint32_t lp_Randi(lp_RandomNumberGenerator* rng) {
-    uint64_t oldstate = rng->state;
-    rng->state = oldstate * 6364136223846793005UL + (rng->inc | 1UL);
-    uint16_t xorshifted = (uint16_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
-    uint16_t rot = (uint16_t)(oldstate >> 59u);
-    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
-}
-
-__device__ uint32_t lp_randbound(lp_RandomNumberGenerator* rng, uint32_t bound) {
-	uint32_t threshold = -bound % bound;
-
-	for (;;) {
-		uint32_t r = lp_Randi(rng);
-		if (r >= threshold)
-			return r % bound;
-	}
-}
-
-__device__ float lp_randf32(lp_RandomNumberGenerator* rng) {
-	uint32_t proto_exp_offset = lp_Randi(rng);
+__device__ float lp_Randf(RandomNumberGenerator* rng) {
+	uint32_t proto_exp_offset = Randi(rng);
 	if (proto_exp_offset == 0) {
 		return 0;
 	}
-	return ldexp((float)(lp_Randi(rng) | 0x80000001), -32 - __clzll(proto_exp_offset));
+	return ldexp((float)(Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset)); 
 }
 
-__device__ void lp_Set_seed(lp_RandomNumberGenerator* rng, uint64_t p_seed) {
-	rng->current_seed = p_seed;
-    rng->state = 0U;
-    rng->inc = (rng->p_inc << 1u) | 1u;
-    lp_Randi(rng);
-    rng->state += rng->current_seed;
-    lp_Randi(rng);
+__device__ float lp_Randf_range(RandomNumberGenerator* rng, float p_from, float p_to) {
+    return lp_Randf(rng)*(p_to-p_from)+p_from;
 }
 
-__device__ uint64_t lp_Get_seed(lp_RandomNumberGenerator* rng) { return rng->current_seed; }
-__device__ void     lp_Set_state(lp_RandomNumberGenerator* rng, uint64_t p_state) { rng->state = p_state; }
-__device__ uint64_t lp_Get_state(lp_RandomNumberGenerator* rng) { return rng->state; }
-
-__device__ float lp_Randf(lp_RandomNumberGenerator* rng) {
-	uint32_t proto_exp_offset = lp_Randi(rng);
-	if (proto_exp_offset == 0) {
-		return 0;
-	}
-	return (ldexp((float)(lp_Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset))); 
-}
-
-__device__ float lp_Randf_range(lp_RandomNumberGenerator* rng, float p_from, float p_to) {
-    float temp = lp_randf32(rng);
-    // printf("%.15f\n", temp);
-    return temp*(p_to-p_from)+p_from;
-}
-
-__device__ float lp_Randfn(lp_RandomNumberGenerator* rng, float p_mean, float p_deviation) {
-    float temp = lp_randf32(rng);
+__device__ float lp_Randfn(RandomNumberGenerator* rng, float p_mean, float p_deviation) {
+    float temp = lp_Randf(rng);
     if (temp < 0.00001f) {
         temp += 0.00001f;
     }
-    return p_mean + p_deviation * cos(6.283185307179586f * (lp_randf32(rng)) * sqrt(-2.0f * log((temp))));
+    return p_mean + p_deviation * (cos(6.283185307179586f * lp_Randf(rng)) * sqrt(-2.0f * log(temp)));
 }
 
-
-__device__ int lp_Randi_range(lp_RandomNumberGenerator* rng, int p_from, int p_to) {
-	if (p_from == p_to) {
-		return p_from;
-	}
-    uint32_t bounds = (uint16_t)((int)(fabs((double)(p_from-p_to)))+1);
-    int randomValue = (int)(lp_randbound(rng, bounds));
-    if (p_from < p_to) {
-        return p_from+randomValue;
-    }
-    return p_to+randomValue;
-}
-
-__device__ void lp_Shuffle(lp_RandomNumberGenerator* rng, int *arr) {
-    // if (n <= 1) // assumes n = 8
-        // return;
-    for (uint16_t i = 7; i > 0; i--) {
-        uint16_t r = lp_randbound(rng, i+1);
-        uint16_t j = r % (i + 1);
-        int tmp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = tmp;
-    }
-}
-
-// low precision helper functions
-
-
-// helper functions
 
 __forceinline__ __device__
 float lp_clamp(float m_a, float m_min, float m_max) {
@@ -175,13 +107,11 @@ float lp_smoothCorner(float x, float m, float l, float s) { // TorCurve.smoothCo
 	return 0.5 * ((l*x + m*(1.0+s1)) - sqrt(pow(abs(l*x-m*(1.0-s1)), 2.0)+4.0*m*m*s1));
 }
 
-// low precision seed func
-
 __device__
-lp_loadout lp_get_results(uint64_t seed) {
-    lp_RandomNumberGenerator rng = lp_Initialise();
-    lp_RandomNumberGenerator globalRng = lp_Initialise();
-    lp_Set_seed(&rng, seed);
+loadout lp_get_results(uint64_t seed) {
+    RandomNumberGenerator rng = GetRNG();
+    RandomNumberGenerator globalRng = GetRNG();
+    Set_seed(&rng, seed);
 
 //                                 speed fireRate multiShot wallPunch splashDamage piercing freezing infection
     int itemCategories[8] = {      0,    1,       2,        3,        4,           5,       6,       7        };
@@ -191,23 +121,23 @@ lp_loadout lp_get_results(uint64_t seed) {
 
     int itemCounts[8];
 
-    float intensity = lp_Randf_range(&rng, 0.20f, 1.0f);
+    double intensity = lp_Randf_range(&rng, 0.20f, 1.0f);
 
-    int character = charList[lp_Randi(&rng) % 6];
-    int abilityChar = charList[lp_Randi(&rng) % 6];
-    float abilityLevel = 1.0 + round(lp_run(lp_Randf(&rng), 1.5/(1.0+intensity),1.0,0.0)*6);
+    int character = charList[Randi(&rng) % 6];
+    int abilityChar = charList[Randi(&rng) % 6];
+    double abilityLevel = 1.0 + round(lp_run(lp_Randf(&rng), 1.5/(1.0+intensity),1.0,0.0)*6);
 
-    float itemCount = 8.0;
+    double itemCount = 8.0;
 
 
-    float points = 0.66 * itemCount * lp_Randf_range(&rng, 0.5, 1.5) * (1.0 + 4.0*pow(intensity, 1.5));
+    double points = 0.66 * itemCount * lp_Randf_range(&rng, 0.5, 1.5) * (1.0 + 4.0*pow(intensity, 1.5));
 
-    float itemDistSteepness = lp_Randf_range(&rng, -0.5, 2.0);
+    double itemDistSteepness = lp_Randf_range(&rng, -0.5, 2.0);
     
-    float itemDistArea = 1.0 / (1.0 + pow(2.0, 0.98*itemDistSteepness));
+    double itemDistArea = 1.0 / (1.0 + pow(2.0, 0.98*itemDistSteepness));
 
-    lp_Set_seed(&globalRng, lp_Get_seed(&rng));
-    lp_Shuffle(&globalRng, itemCategories);
+    Set_seed(&globalRng, Get_seed(&rng));
+    Shuffle(&globalRng, itemCategories);
     
     if (lp_Randf(&rng) < intensity) {
         int multishotIdx = -1;
@@ -226,7 +156,7 @@ lp_loadout lp_get_results(uint64_t seed) {
         }
 
         // Insert multiShot at a new index
-        int insertIdx = itemCount - 1 - lp_Randi_range(&rng, 0, 2);
+        int insertIdx = itemCount - 1 - Randi_range(&rng, 0, 2);
         for (int i = itemCount; i > insertIdx; --i) {
             itemCategories[i] = itemCategories[i - 1];
         }
@@ -250,38 +180,38 @@ lp_loadout lp_get_results(uint64_t seed) {
         }
 
         // Insert firerate at a new index
-        int insertIdx = itemCount - 1 - lp_Randi_range(&rng, 0, 2);
+        int insertIdx = itemCount - 1 - Randi_range(&rng, 0, 2);
         for (int i = itemCount; i > insertIdx; --i) {
             itemCategories[i] = itemCategories[i - 1];
         }
         itemCategories[insertIdx] = 1;
     }
 
-    float catMax = 7.0;
+    double catMax = 7.0;
     // int total = 0; // why does this exist?
     for (int i = 0; i < 8; i++) {
         int item = itemCategories[i];
-        float catT = ((float) i) / catMax;
-        float cost = itemCosts[item];
+        double catT = (double) i / catMax;
+        double cost = itemCosts[item];
         cost = 1.0 + ((cost - 1.0) / 2.5);
-        float baseAmount = 0.0;
+        double baseAmount = 0.0;
 
-        float special = 0.0;
+        double special = 0.0;
         if (i == 7) {
             special += 4.0 * lp_Randf_range(&rng, 0.0, pow(intensity, 2.0));
         }
-        float amount = fmax(0.0, 3.0 * lp_run(catT, itemDistSteepness, 1.0, 0.0) + 3.0 * lp_clamp(lp_Randfn(&rng, 0.0, 0.15), -0.5, 0.5));
+        double amount = fmax(0.0, 3.0 * lp_run(catT, itemDistSteepness, 1.0, 0.0) + 3.0 * lp_clamp(lp_Randfn(&rng, 0.0, 0.15), -0.5, 0.5));
         
         itemCounts[item] = (int) lp_clamp(round(baseAmount+amount*((points/cost)/(1.0+5.0*itemDistArea))+special), 0.0, 26.0);
     }
 
-    intensity = -0.05 + intensity*lp_lerp(0.33, 1.2, lp_smoothCorner(((float) itemCounts[2]*1.8+(float) itemCounts[1])/12.0, 1.0, 1.0, 4.0)); // TODO: smoothCorner()
+    intensity = -0.05 + intensity*lp_lerp(0.33, 1.2, lp_smoothCorner(((double) itemCounts[2]*1.8+(double) itemCounts[1])/12.0, 1.0, 1.0, 4.0)); // TODO: smoothCorner()
 
-    float finalT = lp_Randfn(&rng, (float) pow(intensity, 1.2), 0.05);
-    float startTime = lp_clamp(lp_lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0);
+    double finalT = lp_Randfn(&rng, (float) pow(intensity, 1.2), 0.05);
+    double startTime = lp_clamp(lp_lerp(60.0*2.0, 60.0*20.0, finalT), 60.0*2.0, 60.0*25.0);
 
     lp_Randf(&rng);
     lp_Randf(&rng);
-    int colorState = lp_Randi_range(&rng, 0, 2);
-    return lp_loadout{character, abilityChar, abilityLevel, {itemCounts[0], itemCounts[1], itemCounts[2], itemCounts[3], itemCounts[4], itemCounts[5], itemCounts[6], itemCounts[7]}, startTime, colorState};
+    int colorState = Randi_range(&rng, 0, 2);
+    return loadout{character, abilityChar, abilityLevel, {itemCounts[0], itemCounts[1], itemCounts[2], itemCounts[3], itemCounts[4], itemCounts[5], itemCounts[6], itemCounts[7]}, startTime, colorState};
 }
