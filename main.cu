@@ -119,11 +119,11 @@ __device__ void Initialise(RandomNumberGenerator* rng) {
 __device__ uint32_t Randi(RandomNumberGenerator* rng) {
     uint64_t oldstate = rng->state;
     // printf("ab %llu\n", oldstate);
-    rng->state = oldstate * 6364136223846793005UL + (rng->inc | 1UL);
+    rng->state = oldstate * 6364136223846793005ULL + (rng->inc | 1UL);
     // printf("cd %llu\n", rng->state);
-    uint16_t xorshifted = (uint16_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
+    uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
     // printf("ef %u\n", xorshifted);
-    uint16_t rot = (uint16_t)(oldstate >> 59u);
+    uint32_t rot = oldstate >> 59u;
     // printf("gh %u\n", rot);
     // printf("ij %u\n\n", (xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
     return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
@@ -174,21 +174,19 @@ __device__ double Randf(RandomNumberGenerator* rng) {
 	if (proto_exp_offset == 0) {
 		return 0;
 	}
-	return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset))); 
+		return (double) (float) (ldexp((double)(Randi(rng) | 0x80000001), -32 - __clz(proto_exp_offset)));
 }
 
 __device__ double Randf_range(RandomNumberGenerator* rng, float p_from, float p_to) {
-    float temp = randf32(rng);
-    // printf("%.15f\n", temp);
-    return (double)(temp*(p_to-p_from)+p_from);
+	return (double) (Randf(rng)*(p_to - p_from) + p_from);
 }
 
 __device__ double Randfn(RandomNumberGenerator* rng, float p_mean, float p_deviation) {
-    double temp = randf32(rng);
+    double temp = Randf(rng);
     if (temp < 0.00001) {
         temp += 0.00001;
     }
-    return p_mean + p_deviation * (cos(6.2831853071795864769252867666 * (double)(randf32(rng))) * sqrt(-2.0 * log((double)(temp))));
+    return p_mean + p_deviation * (cos(6.2831853071795864769252867666 * static_cast<double>(Randf(rng))) * sqrt(-2.0 * log(static_cast<double>(temp))));
 }
 
 __device__ int Randi_range(RandomNumberGenerator* rng, int p_from, int p_to) {
@@ -370,17 +368,20 @@ void bruteForce() {
     }
 }
 
-extern "C" {
-__declspec(dllexport) unsigned int startBruteForce() {
-
-    bruteForce<<<1024,256>>>();
-
-    uint32_t h_hash;
-
-    // Copy winning hash to host memory
-    cudaMemcpyFromSymbol(&h_hash, hash, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
-
-    return h_hash;
+__global__
+void cudamain() {
+    RandomNumberGenerator rng;
+    Initialise(&rng);
+    Set_seed(&rng, 123456789);
+    printf("Random number: %u\n", Randi(&rng));
+    printf("Random float: %f\n", Randf(&rng));
+    printf("Random integer in range (1, 10): %d\n", Randi_range(&rng, 1, 10));
+    printf("Random double in range (0.0, 1.0): %f\n", Randf_range(&rng, 0.0f, 1.0f));
+    printf("Random normal distribution: %f\n", Randfn(&rng, 0.0, 1.0));
 }
 
+int main() {
+    // test rng
+    cudamain<<<1,1>>>();
+    cudaDeviceSynchronize();
 }
