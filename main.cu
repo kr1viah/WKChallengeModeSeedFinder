@@ -368,20 +368,17 @@ void bruteForce() {
     }
 }
 
-__global__
-void cudamain() {
-    RandomNumberGenerator rng;
-    Initialise(&rng);
-    Set_seed(&rng, 123456789);
-    printf("Random number: %u\n", Randi(&rng));
-    printf("Random float: %f\n", Randf(&rng));
-    printf("Random integer in range (1, 10): %d\n", Randi_range(&rng, 1, 10));
-    printf("Random double in range (0.0, 1.0): %f\n", Randf_range(&rng, 0.0f, 1.0f));
-    printf("Random normal distribution: %f\n", Randfn(&rng, 0.0, 1.0));
+extern "C" {
+__declspec(dllexport) unsigned int startBruteForce() {
+
+    bruteForce<<<1024,256>>>();
+
+    uint32_t h_hash;
+
+    // Copy winning hash to host memory
+    cudaMemcpyFromSymbol(&h_hash, hash, sizeof(uint32_t), 0, cudaMemcpyDeviceToHost);
+
+    return h_hash;
 }
 
-int main() {
-    // test rng
-    cudamain<<<1,1>>>();
-    cudaDeviceSynchronize();
 }
